@@ -13,6 +13,12 @@ import {
   ModelCacheState,
   PersistedAppState,
 } from "./app.types";
+import {
+  EMPTY_DOCUMENT_MARKDOWN,
+  appendPlainTextToContent,
+  markdownToPlainText,
+  normalizeStoredContent,
+} from "./content-utils";
 import { OpenRouterService } from "./openrouter.service";
 
 type SettingKey = keyof AppSettings;
@@ -41,7 +47,8 @@ const defaultSettings = (): AppSettings => ({
 const defaultGeneration = (): GenerationState => ({
   status: "idle",
   documentId: null,
-  baseContent: "",
+  baseContent: EMPTY_DOCUMENT_MARKDOWN,
+  promptBase: "",
   insertedText: "",
   error: null,
 });
@@ -50,7 +57,7 @@ const createDocument = (index: number): DocumentRecord => ({
   id: crypto.randomUUID(),
   title: `Untitled ${index}`,
   isTitleManual: false,
-  content: "",
+  content: EMPTY_DOCUMENT_MARKDOWN,
   createdAt: Date.now(),
   updatedAt: Date.now(),
   undoStack: [],
@@ -199,13 +206,15 @@ export class AppStore {
       return;
     }
 
+    const normalizedContent = normalizeStoredContent(content);
+
     this.updateDocument(activeDocument.id, (document) => ({
       ...document,
-      content,
+      content: normalizedContent,
       updatedAt: Date.now(),
     }));
 
-    this.stageUserHistory(activeDocument.id, activeDocument.content, content);
+    this.stageUserHistory(activeDocument.id, activeDocument.content, normalizedContent);
   }
 
   undo(): void {
@@ -258,7 +267,10 @@ export class AppStore {
       redoStack: [],
     }));
 
-    await this.generateCompletion(lastEntry.before);
+    await this.generateCompletion(
+      lastEntry.promptBase ?? markdownToPlainText(lastEntry.before),
+      lastEntry.before,
+    );
   }
 
   updateSetting<K extends SettingKey>(key: K, value: AppSettings[K]): void {
@@ -304,7 +316,7 @@ export class AppStore {
     }
   }
 
-  async generateCompletion(baseOverride?: string): Promise<void> {
+  async generateCompletion(promptBaseOverride?: string, htmlBaseOverride?: string): Promise<void> {
     this.flushPendingUserHistory();
     const activeDocument = this.activeDocument();
     const settings = this.settings();
@@ -333,13 +345,15 @@ export class AppStore {
       return;
     }
 
-    const baseContent = baseOverride ?? activeDocument.content;
+    const baseContent = htmlBaseOverride ?? activeDocument.content;
+    const promptBase = promptBaseOverride?.trim() || markdownToPlainText(baseContent);
     const controller = new AbortController();
     this.activeAbortController = controller;
     this.generation.set({
       status: "streaming",
       documentId: activeDocument.id,
       baseContent,
+      promptBase,
       insertedText: "",
       error: null,
     });
@@ -347,7 +361,7 @@ export class AppStore {
     try {
       await this.openRouter.streamCompletion(
         settings,
-        baseContent,
+        promptBase,
         controller.signal,
         {
           onText: (chunk) => this.appendGeneratedText(activeDocument.id, baseContent, chunk),
@@ -381,7 +395,7 @@ export class AppStore {
     const insertedText = this.generation().insertedText;
     this.updateDocument(documentId, (document) => ({
       ...document,
-      content: `${baseContent}${insertedText}`,
+      content: appendPlainTextToContent(baseContent, insertedText),
       updatedAt: Date.now(),
     }));
   }
@@ -398,15 +412,15 @@ export class AppStore {
     if (
       activeDocument &&
       state.insertedText &&
-      activeDocument.content === `${state.baseContent}${state.insertedText}`
+      activeDocument.content === appendPlainTextToContent(state.baseContent, state.insertedText)
     ) {
       this.commitHistory(activeDocument.id, {
         before: state.baseContent,
-        after: `${state.baseContent}${state.insertedText}`,
+        after: appendPlainTextToContent(state.baseContent, state.insertedText),
         source: "ai",
         timestamp: Date.now(),
         label: status === "error" ? "AI completion (partial)" : "AI completion",
-        promptBase: state.baseContent,
+        promptBase: state.promptBase,
       });
     }
 
@@ -415,6 +429,7 @@ export class AppStore {
       status,
       documentId: state.documentId,
       baseContent: state.baseContent,
+      promptBase: state.promptBase,
       insertedText: state.insertedText,
       error: errorMessage,
     });
@@ -554,7 +569,10 @@ export class AppStore {
     try {
       const parsed = JSON.parse(rawState) as Partial<PersistedAppState>;
       const documents = Array.isArray(parsed.documents) && parsed.documents.length > 0
-        ? parsed.documents
+        ? parsed.documents.map((document) => ({
+          ...document,
+          content: normalizeStoredContent(document.content),
+        }))
         : [createDocument(1)];
 
       this.documents.set(documents);

@@ -1,0 +1,113 @@
+:host {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-frame {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  border: 1px solid rgba(53, 48, 41, 0.14);
+  border-radius: 20px;
+  background: var(--panel-strong);
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px;
+  border-bottom: 1px solid rgba(53, 48, 41, 0.08);
+  background: rgba(247, 242, 232, 0.7);
+}
+
+.tool-button {
+  min-width: 44px;
+  padding: 8px 12px;
+  border: 1px solid rgba(53, 48, 41, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 251, 245, 0.92);
+  color: inherit;
+  cursor: pointer;
+}
+
+.tool-button.active {
+  border-color: rgba(186, 91, 37, 0.35);
+  background: rgba(186, 91, 37, 0.14);
+  color: var(--accent-strong);
+}
+
+.editor-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.editor-host {
+  min-height: 100%;
+}
+
+.is-disabled {
+  opacity: 0.78;
+}
+
+:host ::ng-deep .ProseMirror {
+  min-height: 100%;
+  padding: 18px 18px 88px;
+  outline: none;
+  line-height: 1.45;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+:host ::ng-deep .ProseMirror p {
+  margin: 0 0 0.9rem;
+}
+
+:host ::ng-deep .ProseMirror h1,
+:host ::ng-deep .ProseMirror h2,
+:host ::ng-deep .ProseMirror h3 {
+  font-family: "IBM Plex Serif", Georgia, serif;
+  margin: 1.2rem 0 0.6rem;
+}
+
+:host ::ng-deep .ProseMirror h1 {
+  font-size: 2rem;
+}
+
+:host ::ng-deep .ProseMirror h2 {
+  font-size: 1.6rem;
+}
+
+:host ::ng-deep .ProseMirror h3 {
+  font-size: 1.3rem;
+}
+
+:host ::ng-deep .ProseMirror ul,
+:host ::ng-deep .ProseMirror ol {
+  padding-left: 1.5rem;
+}
+
+:host ::ng-deep .ProseMirror hr {
+  border: none;
+  border-top: 1px solid rgba(53, 48, 41, 0.18);
+  margin: 1.4rem 0;
+}
+
+@media (max-width: 840px) {
+  .toolbar {
+    gap: 6px;
+    padding: 12px;
+  }
+
+  .tool-button {
+    padding: 7px 10px;
+  }
+
+  :host ::ng-deep .ProseMirror {
+    padding: 16px 16px 84px;
+  }
+}

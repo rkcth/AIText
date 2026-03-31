@@ -66,17 +66,13 @@
         </div>
 
         <div class="editor-wrap">
-          <textarea
+          <app-rich-text-editor
+            #richEditor
             class="editor"
-            [value]="document.content"
+            [content]="document.content"
             [disabled]="store.isStreaming()"
-            wrap="soft"
-            autocapitalize="sentences"
-            autocorrect="on"
-            spellcheck="true"
-            (input)="onEditorInput($event)"
-            placeholder="Start writing here. Local edits autosave automatically."
-          ></textarea>
+            (contentChange)="onEditorChange($event)"
+          ></app-rich-text-editor>
 
           <div class="editor-actions">
             <button

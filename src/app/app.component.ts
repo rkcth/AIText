@@ -1,16 +1,21 @@
 import { CommonModule } from "@angular/common";
-import { Component, computed, inject } from "@angular/core";
+import { Component, ViewChild, computed, inject } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { AppStore } from "./app.store";
+import { previewTextFromContent } from "./content-utils";
+import { RichTextEditorComponent } from "./rich-text-editor/rich-text-editor.component";
 
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RichTextEditorComponent],
   templateUrl: "./app.component.html",
   styleUrl: "./app.component.css",
 })
 export class AppComponent {
+  @ViewChild("richEditor")
+  private readonly richEditor?: RichTextEditorComponent;
+
   readonly store = inject(AppStore);
   readonly activeDocument = this.store.activeDocument;
   readonly generation = this.store.generation;
@@ -19,17 +24,11 @@ export class AppComponent {
   readonly documentCount = computed(() => this.store.documents().length);
 
   previewText(content: string): string {
-    const flattened = content.replace(/\s+/g, " ").trim();
-    if (!flattened) {
-      return "Empty document";
-    }
-
-    return flattened.length > 120 ? `${flattened.slice(0, 117)}...` : flattened;
+    return previewTextFromContent(content);
   }
 
-  onEditorInput(event: Event): void {
-    const target = event.target as HTMLTextAreaElement;
-    this.store.updateActiveDocumentContent(target.value);
+  onEditorChange(content: string): void {
+    this.store.updateActiveDocumentContent(content);
   }
 
   updateNumberSetting(
@@ -40,7 +39,7 @@ export class AppComponent {
   }
 
   async requestCompletion(): Promise<void> {
-    await this.store.generateCompletion();
+    await this.store.generateCompletion(this.richEditor?.getPlainText() ?? "");
   }
 
   async regenerateLastAi(): Promise<void> {

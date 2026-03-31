@@ -47,6 +47,7 @@ export interface GenerationState {
   status: "idle" | "streaming" | "stopped" | "error";
   documentId: string | null;
   baseContent: string;
+  promptBase: string;
   insertedText: string;
   error: string | null;
 }
