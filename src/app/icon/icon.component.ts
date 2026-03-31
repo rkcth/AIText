@@ -1,5 +1,5 @@
 import { CommonModule } from "@angular/common";
-import { Component, Input, computed } from "@angular/core";
+import { Component, Input } from "@angular/core";
 
 type IconName =
   | "play"
@@ -134,5 +134,7 @@ export class IconComponent {
   @Input() size = 18;
   @Input() strokeWidth = 2;
 
-  readonly icon = computed(() => ICONS[this.name]);
+  icon(): IconDefinition | null {
+    return ICONS[this.name] ?? null;
+  }
 }
