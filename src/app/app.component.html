@@ -70,6 +70,10 @@
             class="editor"
             [value]="document.content"
             [disabled]="store.isStreaming()"
+            wrap="soft"
+            autocapitalize="sentences"
+            autocorrect="on"
+            spellcheck="true"
             (input)="onEditorInput($event)"
             placeholder="Start writing here. Local edits autosave automatically."
           ></textarea>
