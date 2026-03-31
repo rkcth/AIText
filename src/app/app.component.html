@@ -65,50 +65,56 @@
           </div>
         </div>
 
-        <div class="editor-wrap">
-          <app-rich-text-editor
-            #richEditor
-            class="editor"
-            [content]="document.content"
-            [disabled]="store.isStreaming()"
-            (contentChange)="onEditorChange($event)"
-          ></app-rich-text-editor>
+        <div class="editor-section">
+          <div class="editor-wrap">
+            <app-rich-text-editor
+              #richEditor
+              class="editor"
+              [content]="document.content"
+              [disabled]="store.isStreaming()"
+              (contentChange)="onEditorChange($event)"
+            ></app-rich-text-editor>
 
-          <div class="editor-actions">
-            <button
-              type="button"
-              class="editor-fab"
-              [disabled]="!settings().apiKey.trim() && !store.isStreaming()"
-              [attr.aria-label]="store.isStreaming() ? 'Stop completion' : 'Start completion'"
-              [title]="
-                store.isStreaming()
-                  ? 'Stop completion'
-                  : (settings().apiKey.trim() ? 'Start completion' : 'Add an API key to enable completion')
-              "
-              (click)="store.isStreaming() ? store.stopGeneration() : requestCompletion()"
-            >
-              <app-icon
-                [name]="store.isStreaming() ? 'square' : 'play'"
-                [size]="18"
-                [strokeWidth]="2.25"
-              ></app-icon>
-            </button>
+            <div class="editor-actions">
+              <button
+                type="button"
+                class="editor-fab"
+                [disabled]="!settings().apiKey.trim() && !store.isStreaming()"
+                [attr.aria-label]="store.isStreaming() ? 'Stop completion' : 'Start completion'"
+                [title]="
+                  store.isStreaming()
+                    ? 'Stop completion'
+                    : (settings().apiKey.trim() ? 'Start completion' : 'Add an API key to enable completion')
+                "
+                (click)="store.isStreaming() ? store.stopGeneration() : requestCompletion()"
+              >
+                <app-icon
+                  [name]="store.isStreaming() ? 'square' : 'play'"
+                  [size]="18"
+                  [strokeWidth]="2.25"
+                ></app-icon>
+              </button>
 
-            <button
-              type="button"
-              class="icon-button editor-side-action"
-              [disabled]="!store.canRegenerate()"
-              aria-label="Regenerate last AI completion"
-              title="Regenerate last AI completion"
-              (click)="regenerateLastAi()"
-            >
-              <app-icon
-                name="refresh-ccw"
-                [size]="18"
-                [strokeWidth]="2"
-              ></app-icon>
-            </button>
+              <button
+                type="button"
+                class="icon-button editor-side-action"
+                [disabled]="!store.canRegenerate()"
+                aria-label="Regenerate last AI completion"
+                title="Regenerate last AI completion"
+                (click)="regenerateLastAi()"
+              >
+                <app-icon
+                  name="refresh-ccw"
+                  [size]="18"
+                  [strokeWidth]="2"
+                ></app-icon>
+              </button>
+            </div>
           </div>
+
+          <p class="editor-save-status">
+            {{ store.saveState() === "saving" ? "Saving..." : "Saved" }}
+          </p>
         </div>
 
         @if (generation().error) {

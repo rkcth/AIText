@@ -178,11 +178,25 @@ h2 {
   gap: 10px;
 }
 
+.editor-section {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .editor-wrap {
   position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
+}
+
+.editor-save-status {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
 }
 
 .editor {

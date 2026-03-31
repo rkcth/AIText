@@ -69,12 +69,17 @@ export class RichTextEditorComponent
             return false;
           }
 
-          event.preventDefault();
-          this.editorInstance
+          const inserted = this.editorInstance
             .chain()
             .focus()
-            .insertContent(text, { contentType: "markdown" })
+            .insertContent(text)
             .run();
+
+          if (!inserted) {
+            return false;
+          }
+
+          event.preventDefault();
           return true;
         },
         handleDOMEvents: {
