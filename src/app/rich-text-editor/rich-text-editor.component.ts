@@ -64,16 +64,29 @@ export class RichTextEditorComponent
           spellcheck: "true",
         },
         handlePaste: (_view, event) => {
-          const text = event.clipboardData?.getData("text/plain");
-          if (!text || !this.editorInstance) {
+          const clipboard = event.clipboardData;
+          if (!clipboard || !this.editorInstance) {
             return false;
           }
 
-          const inserted = this.editorInstance
-            .chain()
-            .focus()
-            .insertContent(text)
-            .run();
+          const html = clipboard.getData("text/html").trim();
+          const text = clipboard.getData("text/plain");
+
+          let inserted = false;
+
+          if (html) {
+            inserted = this.editorInstance
+              .chain()
+              .focus()
+              .insertContent(html)
+              .run();
+          } else if (text) {
+            inserted = this.editorInstance
+              .chain()
+              .focus()
+              .insertContent(text, { contentType: "markdown" })
+              .run();
+          }
 
           if (!inserted) {
             return false;
