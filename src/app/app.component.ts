@@ -18,6 +18,15 @@ export class AppComponent {
   readonly modelCache = this.store.modelCache;
   readonly documentCount = computed(() => this.store.documents().length);
 
+  previewText(content: string): string {
+    const flattened = content.replace(/\s+/g, " ").trim();
+    if (!flattened) {
+      return "Empty document";
+    }
+
+    return flattened.length > 120 ? `${flattened.slice(0, 117)}...` : flattened;
+  }
+
   onEditorInput(event: Event): void {
     const target = event.target as HTMLTextAreaElement;
     this.store.updateActiveDocumentContent(target.value);

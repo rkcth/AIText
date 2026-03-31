@@ -101,9 +101,13 @@ h2 {
 .document-preview {
   color: var(--text-soft);
   font-size: 0.9rem;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .title-input,

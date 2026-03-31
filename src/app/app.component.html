@@ -25,7 +25,7 @@
         >
           <span class="document-title">{{ document.title }}</span>
           <span class="document-preview">
-            {{ document.content.trim() || "Empty document" }}
+            {{ previewText(document.content) }}
           </span>
         </button>
       }
