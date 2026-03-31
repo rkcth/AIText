@@ -1,0 +1,381 @@
+.shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 340px;
+  gap: 20px;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.panel,
+.editor-shell {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+}
+
+.panel {
+  padding: 20px;
+}
+
+.sidebar,
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.editor-panel {
+  min-width: 0;
+}
+
+.editor-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: calc(100vh - 40px);
+  padding: 20px;
+}
+
+.panel-header,
+.editor-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.title-block {
+  min-width: 0;
+}
+
+.eyebrow,
+.meta {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-family: "IBM Plex Serif", Georgia, serif;
+}
+
+.document-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+}
+
+.document-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.5);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.document-card:hover,
+.document-card.active {
+  border-color: rgba(186, 91, 37, 0.3);
+  background: rgba(255, 251, 245, 0.92);
+  transform: translateY(-1px);
+}
+
+.document-title {
+  font-weight: 600;
+}
+
+.document-preview {
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.title-input,
+.field input,
+.field select,
+.field textarea,
+.editor {
+  width: 100%;
+  border: 1px solid rgba(53, 48, 41, 0.14);
+  border-radius: 16px;
+  background: var(--panel-strong);
+  color: inherit;
+}
+
+.title-input,
+.field input,
+.field select,
+.field textarea {
+  padding: 12px 14px;
+}
+
+.title-input {
+  border: none;
+  background: transparent;
+  font-size: 1.5rem;
+  font-weight: 600;
+  padding: 0;
+}
+
+.title-input:focus,
+.editor:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: 2px solid rgba(186, 91, 37, 0.22);
+  outline-offset: 2px;
+}
+
+.editor {
+  flex: 1;
+  resize: none;
+  padding: 18px 18px 78px;
+  line-height: 1.6;
+  min-height: 320px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field span {
+  font-weight: 600;
+}
+
+.field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.grow {
+  flex: 1;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.editor-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-actions {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+button {
+  border: 1px solid rgba(53, 48, 41, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 251, 245, 0.92);
+  color: inherit;
+  cursor: pointer;
+  padding: 10px 14px;
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(186, 91, 37, 0.3);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff8f2;
+}
+
+button.danger {
+  color: #7c1f18;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+
+.editor-fab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: none;
+  background: var(--accent);
+  color: #fff8f2;
+  box-shadow: 0 14px 24px rgba(144, 65, 15, 0.24);
+}
+
+.editor-fab:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.editor-side-action {
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 251, 245, 0.96);
+  box-shadow: 0 8px 20px rgba(80, 55, 24, 0.12);
+}
+
+.icon-play {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-left: 16px solid currentColor;
+  margin-left: 4px;
+}
+
+.icon-square {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  border-radius: 2px;
+}
+
+.icon-refresh {
+  position: relative;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+}
+
+.icon-refresh::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -1px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 6px solid currentColor;
+  transform: rotate(24deg);
+}
+
+.icon-refresh.spinning {
+  animation: spin 0.9s linear infinite;
+}
+
+.status {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(41, 89, 135, 0.08);
+  color: #264763;
+}
+
+.status.warning {
+  background: rgba(184, 134, 11, 0.12);
+  color: #735100;
+}
+
+.status.error {
+  background: rgba(161, 33, 24, 0.12);
+  color: #7d1c15;
+}
+
+.cache-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (max-width: 1200px) {
+  .shell {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+
+  .settings-panel {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 840px) {
+  .shell {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .editor-shell {
+    height: auto;
+    min-height: 60vh;
+  }
+
+  .panel-header,
+  .editor-topbar {
+    flex-direction: column;
+  }
+
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .action-row {
+    justify-content: flex-start;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}

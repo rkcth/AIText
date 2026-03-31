@@ -1,0 +1,240 @@
+<div class="shell">
+  <aside class="panel sidebar">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Documents</p>
+        <h1>AIText</h1>
+      </div>
+      <button type="button" class="primary" (click)="store.createNewDocument()">
+        New
+      </button>
+    </div>
+
+    <p class="meta">
+      {{ documentCount() }} document{{ documentCount() === 1 ? "" : "s" }} •
+      {{ store.saveState() === "saving" ? "Saving..." : "Saved" }}
+    </p>
+
+    <div class="document-list">
+      @for (document of store.documents(); track document.id) {
+        <button
+          type="button"
+          class="document-card"
+          [class.active]="document.id === activeDocument()?.id"
+          (click)="store.selectDocument(document.id)"
+        >
+          <span class="document-title">{{ document.title }}</span>
+          <span class="document-preview">
+            {{ document.content.trim() || "Empty document" }}
+          </span>
+        </button>
+      }
+    </div>
+  </aside>
+
+  <main class="editor-panel">
+    @if (activeDocument(); as document) {
+      <div class="panel editor-shell">
+        <div class="editor-topbar">
+          <div class="title-block">
+            <input
+              class="title-input"
+              [value]="document.title"
+              (input)="store.renameDocument(document.id, $any($event.target).value)"
+              placeholder="Document title"
+            />
+            <p class="meta">
+              {{ generation().status === "streaming" ? "Streaming completion..." : "Ready" }}
+            </p>
+          </div>
+
+          <div class="action-row">
+            <button type="button" (click)="store.undo()" [disabled]="!store.canUndo()">
+              Undo
+            </button>
+            <button type="button" (click)="store.redo()" [disabled]="!store.canRedo()">
+              Redo
+            </button>
+            <button
+              type="button"
+              class="danger"
+              (click)="store.deleteDocument(document.id)"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+
+        <div class="editor-wrap">
+          <textarea
+            class="editor"
+            [value]="document.content"
+            [disabled]="store.isStreaming()"
+            (input)="onEditorInput($event)"
+            placeholder="Start writing here. Local edits autosave automatically."
+          ></textarea>
+
+          <div class="editor-actions">
+            <button
+              type="button"
+              class="editor-fab"
+              [disabled]="!settings().apiKey.trim() && !store.isStreaming()"
+              [attr.aria-label]="store.isStreaming() ? 'Stop completion' : 'Start completion'"
+              [title]="
+                store.isStreaming()
+                  ? 'Stop completion'
+                  : (settings().apiKey.trim() ? 'Start completion' : 'Add an API key to enable completion')
+              "
+              (click)="store.isStreaming() ? store.stopGeneration() : requestCompletion()"
+            >
+              @if (store.isStreaming()) {
+                <span class="icon-square" aria-hidden="true"></span>
+              } @else {
+                <span class="icon-play" aria-hidden="true"></span>
+              }
+            </button>
+
+            <button
+              type="button"
+              class="icon-button editor-side-action"
+              [disabled]="!store.canRegenerate()"
+              aria-label="Regenerate last AI completion"
+              title="Regenerate last AI completion"
+              (click)="regenerateLastAi()"
+            >
+              <span class="icon-refresh" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+
+        @if (generation().error) {
+          <p class="status error">{{ generation().error }}</p>
+        } @else if (generation().status === "stopped") {
+          <p class="status">Generation stopped. Partial text was kept.</p>
+        } @else if (generation().status === "idle" && generation().insertedText) {
+          <p class="status">Latest completion added {{ generation().insertedText.length }} characters.</p>
+        }
+      </div>
+    }
+  </main>
+
+  <aside class="panel settings-panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Settings</p>
+        <h2>OpenRouter</h2>
+      </div>
+    </div>
+
+    <label class="field">
+      <span>API Key</span>
+      <input
+        type="password"
+        [ngModel]="settings().apiKey"
+        (ngModelChange)="store.updateSetting('apiKey', $event)"
+        placeholder="sk-or-v1-..."
+      />
+    </label>
+
+    <label class="field">
+      <span class="field-header">
+        <span>Model</span>
+        <button
+          type="button"
+          class="icon-button"
+          [disabled]="modelCache().isLoading"
+          [attr.aria-label]="modelCache().isLoading ? 'Refreshing models' : 'Refresh models'"
+          [title]="modelCache().isLoading ? 'Refreshing models' : 'Refresh models'"
+          (click)="refreshModels()"
+        >
+          <span
+            class="icon-refresh"
+            [class.spinning]="modelCache().isLoading"
+            aria-hidden="true"
+          ></span>
+        </button>
+      </span>
+      <select
+        [ngModel]="settings().model"
+        (ngModelChange)="store.updateSetting('model', $event)"
+      >
+        <option value="">Choose a model</option>
+        @for (model of modelCache().items; track model.id) {
+          <option [value]="model.id">
+            {{ model.name }} ({{ model.id }})
+          </option>
+        }
+      </select>
+    </label>
+
+    @if (store.selectedModelMissing()) {
+      <p class="status warning">
+        The selected model is not in the current cache. It will still stay selected until you change it.
+      </p>
+    }
+
+    <div class="field-grid">
+      <label class="field">
+        <span>Max Tokens</span>
+        <input
+          type="number"
+          min="1"
+          max="4096"
+          [ngModel]="settings().maxTokens"
+          (ngModelChange)="updateNumberSetting('maxTokens', $event)"
+        />
+      </label>
+
+      <label class="field">
+        <span>Temperature</span>
+        <input
+          type="number"
+          min="0"
+          max="2"
+          step="0.1"
+          [ngModel]="settings().temperature"
+          (ngModelChange)="updateNumberSetting('temperature', $event)"
+        />
+      </label>
+
+      <label class="field">
+        <span>Top P</span>
+        <input
+          type="number"
+          min="0"
+          max="1"
+          step="0.05"
+          [ngModel]="settings().topP"
+          (ngModelChange)="updateNumberSetting('topP', $event)"
+        />
+      </label>
+    </div>
+
+    <label class="field grow">
+      <span>System Prompt</span>
+      <textarea
+        rows="10"
+        [ngModel]="settings().systemPrompt"
+        (ngModelChange)="store.updateSetting('systemPrompt', $event)"
+        placeholder="Optional system prompt to guide continuations."
+      ></textarea>
+    </label>
+
+    <div class="cache-meta">
+      <p class="meta">
+        {{
+          modelCache().fetchedAt
+            ? ("Model cache updated " + (modelCache().fetchedAt | date: 'medium'))
+            : "Model cache has not been fetched yet."
+        }}
+      </p>
+      <p class="meta">
+        Your key and settings stay in local storage on this device. There is no backend.
+      </p>
+    </div>
+
+    @if (modelCache().error) {
+      <p class="status error">{{ modelCache().error }}</p>
+    }
+  </aside>
+</div>
