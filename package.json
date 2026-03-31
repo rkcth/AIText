@@ -7,6 +7,7 @@
     "start": "ng serve",
     "dev": "ng serve",
     "build": "ng build",
+    "build:pages": "ng build --configuration production --base-href ./",
     "watch": "ng build --watch --configuration development",
     "clean": "rm -rf dist",
     "check": "ng build --configuration development",
