@@ -31,16 +31,16 @@ const stripHtmlToText = (value: string): string => {
 };
 
 export const normalizeStoredContent = (content: string): string => {
-  const raw = (content ?? "").trim();
-  if (!raw) {
+  const raw = (content ?? "").replace(/\r\n/g, "\n");
+  if (!raw.trim()) {
     return EMPTY_DOCUMENT_MARKDOWN;
   }
 
-  if (/<[a-z][\s\S]*>/i.test(raw)) {
+  if (/<[a-z][\s\S]*>/i.test(raw.trim())) {
     return stripHtmlToText(raw);
   }
 
-  return raw.replace(/\r\n/g, "\n");
+  return raw;
 };
 
 export const markdownToPlainText = (content: string): string =>
