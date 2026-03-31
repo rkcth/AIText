@@ -265,49 +265,8 @@ button.danger {
   box-shadow: 0 8px 20px rgba(80, 55, 24, 0.12);
 }
 
-.icon-play {
-  display: inline-block;
-  width: 0;
-  height: 0;
-  border-top: 10px solid transparent;
-  border-bottom: 10px solid transparent;
-  border-left: 16px solid currentColor;
-  margin-left: 4px;
-}
-
-.icon-square {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  background: currentColor;
-  border-radius: 2px;
-}
-
-.icon-refresh {
-  position: relative;
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-}
-
-.icon-refresh::after {
-  content: "";
-  position: absolute;
-  top: -3px;
-  right: -1px;
-  width: 0;
-  height: 0;
-  border-top: 5px solid transparent;
-  border-bottom: 5px solid transparent;
-  border-left: 6px solid currentColor;
-  transform: rotate(24deg);
-}
-
-.icon-refresh.spinning {
-  animation: spin 0.9s linear infinite;
+.lucide-icon {
+  display: block;
 }
 
 .status {

@@ -1,0 +1,19 @@
+@if (icon(); as currentIcon) {
+  <svg
+    class="app-icon"
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    [attr.viewBox]="currentIcon.viewBox"
+    [attr.width]="size"
+    [attr.height]="size"
+    [attr.stroke-width]="strokeWidth"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    @for (path of currentIcon.paths; track path) {
+      <path [attr.d]="path"></path>
+    }
+  </svg>
+}

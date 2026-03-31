@@ -87,11 +87,11 @@
               "
               (click)="store.isStreaming() ? store.stopGeneration() : requestCompletion()"
             >
-              @if (store.isStreaming()) {
-                <span class="icon-square" aria-hidden="true"></span>
-              } @else {
-                <span class="icon-play" aria-hidden="true"></span>
-              }
+              <app-icon
+                [name]="store.isStreaming() ? 'square' : 'play'"
+                [size]="18"
+                [strokeWidth]="2.25"
+              ></app-icon>
             </button>
 
             <button
@@ -102,7 +102,11 @@
               title="Regenerate last AI completion"
               (click)="regenerateLastAi()"
             >
-              <span class="icon-refresh" aria-hidden="true"></span>
+              <app-icon
+                name="refresh-ccw"
+                [size]="18"
+                [strokeWidth]="2"
+              ></app-icon>
             </button>
           </div>
         </div>
@@ -147,11 +151,13 @@
           [title]="modelCache().isLoading ? 'Refreshing models' : 'Refresh models'"
           (click)="refreshModels()"
         >
-          <span
-            class="icon-refresh"
+          <app-icon
+            name="refresh-cw"
+            class="lucide-icon"
             [class.spinning]="modelCache().isLoading"
-            aria-hidden="true"
-          ></span>
+            [size]="16"
+            [strokeWidth]="2"
+          ></app-icon>
         </button>
       </span>
       <select

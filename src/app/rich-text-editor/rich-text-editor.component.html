@@ -1,72 +1,130 @@
 <div class="editor-frame" [class.is-disabled]="disabled">
   <div class="toolbar" aria-label="Formatting toolbar">
-    <button
-      type="button"
-      class="tool-button"
-      [class.active]="isActive('paragraph')"
-      (click)="setParagraph()"
-    >
-      P
-    </button>
-    <button
-      type="button"
-      class="tool-button"
-      [class.active]="isActive('bold')"
-      (click)="toggleBold()"
-    >
-      <strong>B</strong>
-    </button>
-    <button
-      type="button"
-      class="tool-button"
-      [class.active]="isActive('italic')"
-      (click)="toggleItalic()"
-    >
-      <em>I</em>
-    </button>
-    <button
-      type="button"
-      class="tool-button"
-      [class.active]="isActive('heading', { level: 1 })"
-      (click)="toggleHeading(1)"
-    >
-      H1
-    </button>
-    <button
-      type="button"
-      class="tool-button"
-      [class.active]="isActive('heading', { level: 2 })"
-      (click)="toggleHeading(2)"
-    >
-      H2
-    </button>
-    <button
-      type="button"
-      class="tool-button"
-      [class.active]="isActive('heading', { level: 3 })"
-      (click)="toggleHeading(3)"
-    >
-      H3
-    </button>
-    <button
-      type="button"
-      class="tool-button"
-      [class.active]="isActive('bulletList')"
-      (click)="toggleBulletList()"
-    >
-      • List
-    </button>
-    <button
-      type="button"
-      class="tool-button"
-      [class.active]="isActive('orderedList')"
-      (click)="toggleOrderedList()"
-    >
-      1. List
-    </button>
-    <button type="button" class="tool-button" (click)="addHorizontalRule()">
-      Rule
-    </button>
+    <div class="toolbar-cluster">
+      <div class="toolbar-group format-group">
+        <button
+          type="button"
+          class="tool-button text-tool"
+          [class.active]="isActive('paragraph')"
+          aria-label="Paragraph"
+          title="Paragraph"
+          (click)="setParagraph()"
+        >
+          <span class="tool-label">Text</span>
+        </button>
+        <button
+          type="button"
+          class="tool-button heading-tool"
+          [class.active]="isActive('heading', { level: 1 })"
+          aria-label="Heading 1"
+          title="Heading 1"
+          (click)="toggleHeading(1)"
+        >
+          <span class="tool-label">H1</span>
+        </button>
+        <button
+          type="button"
+          class="tool-button heading-tool"
+          [class.active]="isActive('heading', { level: 2 })"
+          aria-label="Heading 2"
+          title="Heading 2"
+          (click)="toggleHeading(2)"
+        >
+          <span class="tool-label">H2</span>
+        </button>
+        <button
+          type="button"
+          class="tool-button heading-tool"
+          [class.active]="isActive('heading', { level: 3 })"
+          aria-label="Heading 3"
+          title="Heading 3"
+          (click)="toggleHeading(3)"
+        >
+          <span class="tool-label">H3</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="toolbar-cluster">
+      <button
+        type="button"
+        class="tool-button style-tool strong-tool"
+        [class.active]="isActive('bold')"
+        aria-label="Bold"
+        title="Bold"
+        (click)="toggleBold()"
+      >
+        <span class="tool-label">B</span>
+      </button>
+      <button
+        type="button"
+        class="tool-button style-tool italic-tool"
+        [class.active]="isActive('italic')"
+        aria-label="Italic"
+        title="Italic"
+        (click)="toggleItalic()"
+      >
+        <span class="tool-label">I</span>
+      </button>
+    </div>
+
+    <div class="toolbar-cluster">
+      <button
+        type="button"
+        class="tool-button icon-tool"
+        [class.active]="isActive('bulletList')"
+        aria-label="Bullet list"
+        title="Bullet list"
+        (click)="toggleBulletList()"
+      >
+        <span class="list-glyph" aria-hidden="true">
+          <span class="list-row">
+            <span class="list-dot"></span>
+            <span class="list-line"></span>
+          </span>
+          <span class="list-row">
+            <span class="list-dot"></span>
+            <span class="list-line short"></span>
+          </span>
+          <span class="list-row">
+            <span class="list-dot"></span>
+            <span class="list-line"></span>
+          </span>
+        </span>
+      </button>
+      <button
+        type="button"
+        class="tool-button icon-tool"
+        [class.active]="isActive('orderedList')"
+        aria-label="Numbered list"
+        title="Numbered list"
+        (click)="toggleOrderedList()"
+      >
+        <span class="ordered-glyph" aria-hidden="true">
+          <span class="list-row">
+            <span class="ordered-number">1.</span>
+            <span class="list-line"></span>
+          </span>
+          <span class="list-row">
+            <span class="ordered-number">2.</span>
+            <span class="list-line short"></span>
+          </span>
+          <span class="list-row">
+            <span class="ordered-number">3.</span>
+            <span class="list-line"></span>
+          </span>
+        </span>
+      </button>
+      <button
+        type="button"
+        class="tool-button icon-tool"
+        aria-label="Horizontal rule"
+        title="Horizontal rule"
+        (click)="addHorizontalRule()"
+      >
+        <span class="rule-glyph" aria-hidden="true"></span>
+      </button>
+    </div>
   </div>
 
   <div class="editor-scroll">

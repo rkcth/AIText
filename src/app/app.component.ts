@@ -3,12 +3,18 @@ import { Component, ViewChild, computed, inject } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { AppStore } from "./app.store";
 import { previewTextFromContent } from "./content-utils";
+import { IconComponent } from "./icon/icon.component";
 import { RichTextEditorComponent } from "./rich-text-editor/rich-text-editor.component";
 
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [CommonModule, FormsModule, RichTextEditorComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    IconComponent,
+    RichTextEditorComponent,
+  ],
   templateUrl: "./app.component.html",
   styleUrl: "./app.component.css",
 })
