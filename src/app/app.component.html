@@ -41,6 +41,7 @@
               class="title-input"
               [value]="document.title"
               (input)="store.renameDocument(document.id, $any($event.target).value)"
+              (blur)="store.finalizeDocumentTitle(document.id)"
               placeholder="Document title"
             />
             <p class="meta">

@@ -174,10 +174,25 @@ export class AppStore {
   }
 
   renameDocument(documentId: string, title: string): void {
-    const trimmed = title.trim();
     this.updateDocument(documentId, (document) => ({
       ...document,
-      title: trimmed || `Untitled ${this.getDocumentIndex(documentId)}`,
+      title,
+      isTitleManual: title.trim().length > 0,
+      updatedAt: Date.now(),
+    }));
+  }
+
+  finalizeDocumentTitle(documentId: string): void {
+    const document = this.documents().find((entry) => entry.id === documentId);
+    if (!document) {
+      return;
+    }
+
+    const trimmed = document.title.trim();
+    const nextTitle = trimmed || `Untitled ${this.getDocumentIndex(documentId)}`;
+    this.updateDocument(documentId, (document) => ({
+      ...document,
+      title: nextTitle,
       isTitleManual: trimmed.length > 0,
       updatedAt: Date.now(),
     }));
