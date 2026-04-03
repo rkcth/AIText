@@ -204,6 +204,14 @@ h2 {
   transform: translateY(-50%);
 }
 
+.model-picker-caret {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid currentColor;
+}
+
 .model-picker-popup {
   position: absolute;
   top: calc(100% + 8px);
