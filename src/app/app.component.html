@@ -179,7 +179,7 @@
             ngComboboxInput
             class="model-picker-input"
             placeholder="Search models by name or id"
-            [value]="modelQuery()"
+            [value]="modelInputValue()"
             (valueChange)="modelQuery.set($event)"
             (focus)="onModelQueryFocus()"
             (blur)="onModelQueryBlur()"

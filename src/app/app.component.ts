@@ -67,6 +67,12 @@ export class AppComponent {
 
     return selectedId ? selectedId : "";
   });
+  readonly modelInputValue = computed(() => {
+    const expanded = this.modelCombobox()?.expanded() ?? false;
+    return this.modelPickerFocused() || expanded
+      ? this.modelQuery()
+      : this.selectedModelLabel();
+  });
   readonly popupFavoriteModels = computed(() =>
     this.resolveModelsFromSnapshot(
       this.modelFavoriteSnapshotIds(),
@@ -131,10 +137,6 @@ export class AppComponent {
 
   onModelQueryBlur(): void {
     this.modelPickerFocused.set(false);
-
-    if (!(this.modelCombobox()?.expanded() ?? false)) {
-      this.modelQuery.set(this.selectedModelLabel());
-    }
   }
 
   onModelSelectionChange(modelIds: string[]): void {
@@ -147,7 +149,7 @@ export class AppComponent {
     this.store.updateSetting("model", selectedId);
     this.selectedModelValues.set([selectedId]);
     this.modelPickerFocused.set(false);
-    this.modelQuery.set(this.labelForModelId(selectedId));
+    this.modelQuery.set("");
     this.modelCombobox()?.close();
   }
 
