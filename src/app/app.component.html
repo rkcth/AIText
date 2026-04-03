@@ -174,15 +174,28 @@
         filterMode="manual"
         [firstMatch]="firstMatchingModelId()"
       >
-        <input
-          ngComboboxInput
-          class="model-picker-input"
-          placeholder="Search models by name or id"
-          [value]="modelQuery()"
-          (valueChange)="modelQuery.set($event)"
-          (focus)="onModelQueryFocus()"
-          (blur)="onModelQueryBlur()"
-        />
+        <div class="model-picker-input-wrap">
+          <input
+            ngComboboxInput
+            class="model-picker-input"
+            placeholder="Search models by name or id"
+            [value]="modelQuery()"
+            (valueChange)="modelQuery.set($event)"
+            (focus)="onModelQueryFocus()"
+            (blur)="onModelQueryBlur()"
+          />
+
+          <button
+            type="button"
+            class="model-picker-toggle"
+            aria-label="Show all models"
+            title="Show all models"
+            (mousedown)="preventModelOptionDefault($event)"
+            (click)="openModelPicker($event)"
+          >
+            <app-icon name="chevron-down" [size]="16" [strokeWidth]="2"></app-icon>
+          </button>
+        </div>
 
         <ng-template ngComboboxPopupContainer>
           <div

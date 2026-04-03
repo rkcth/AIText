@@ -39,6 +39,8 @@ export class AppComponent {
   private readonly richEditor?: RichTextEditorComponent;
 
   private readonly modelCombobox = viewChild<Combobox<string>>(Combobox);
+  private readonly modelInput = viewChild<ComboboxInput>(ComboboxInput);
+  private lastModelPickerExpanded = false;
 
   readonly store = inject(AppStore);
   readonly activeDocument = this.store.activeDocument;
@@ -49,6 +51,8 @@ export class AppComponent {
   readonly modelQuery = signal("");
   readonly modelPickerFocused = signal(false);
   readonly selectedModelValues = signal<string[]>([]);
+  readonly modelFavoriteSnapshotIds = signal<string[] | null>(null);
+  readonly modelOtherSnapshotIds = signal<string[] | null>(null);
   readonly favoriteModelIds = computed(() => this.settings().favoriteModelIds);
   readonly selectedModel = computed(() =>
     this.modelCache().items.find((model) => model.id === this.settings().model) ?? null,
@@ -63,16 +67,24 @@ export class AppComponent {
 
     return selectedId ? selectedId : "";
   });
-  readonly filteredFavoriteModels = computed(() => {
-    const favorites = new Set(this.favoriteModelIds());
-    return this.modelCache().items.filter((model) =>
-      favorites.has(model.id) && this.matchesModelQuery(model, this.modelQuery()));
-  });
-  readonly filteredOtherModels = computed(() => {
-    const favorites = new Set(this.favoriteModelIds());
-    return this.modelCache().items.filter((model) =>
-      !favorites.has(model.id) && this.matchesModelQuery(model, this.modelQuery()));
-  });
+  readonly popupFavoriteModels = computed(() =>
+    this.resolveModelsFromSnapshot(
+      this.modelFavoriteSnapshotIds(),
+      (model) => this.favoriteModelIds().includes(model.id),
+    ),
+  );
+  readonly popupOtherModels = computed(() =>
+    this.resolveModelsFromSnapshot(
+      this.modelOtherSnapshotIds(),
+      (model) => !this.favoriteModelIds().includes(model.id),
+    ),
+  );
+  readonly filteredFavoriteModels = computed(() =>
+    this.popupFavoriteModels().filter((model) => this.matchesModelQuery(model, this.modelQuery())),
+  );
+  readonly filteredOtherModels = computed(() =>
+    this.popupOtherModels().filter((model) => this.matchesModelQuery(model, this.modelQuery())),
+  );
   readonly firstMatchingModelId = computed(() =>
     this.filteredFavoriteModels()[0]?.id ?? this.filteredOtherModels()[0]?.id,
   );
@@ -88,6 +100,18 @@ export class AppComponent {
       if (!this.modelPickerFocused()) {
         this.modelQuery.set(this.selectedModelLabel());
       }
+    });
+
+    effect(() => {
+      const expanded = this.modelCombobox()?.expanded() ?? false;
+
+      if (expanded && !this.lastModelPickerExpanded) {
+        this.captureModelSnapshots();
+      } else if (!expanded && this.lastModelPickerExpanded) {
+        this.clearModelSnapshots();
+      }
+
+      this.lastModelPickerExpanded = expanded;
     });
 
     afterNextRender(() => {
@@ -107,7 +131,10 @@ export class AppComponent {
 
   onModelQueryBlur(): void {
     this.modelPickerFocused.set(false);
-    this.modelQuery.set(this.selectedModelLabel());
+
+    if (!(this.modelCombobox()?.expanded() ?? false)) {
+      this.modelQuery.set(this.selectedModelLabel());
+    }
   }
 
   onModelSelectionChange(modelIds: string[]): void {
@@ -122,6 +149,16 @@ export class AppComponent {
     this.modelPickerFocused.set(false);
     this.modelQuery.set(this.labelForModelId(selectedId));
     this.modelCombobox()?.close();
+  }
+
+  openModelPicker(event: Event): void {
+    this.preventModelOptionDefault(event);
+    this.modelPickerFocused.set(true);
+    this.modelQuery.set("");
+    this.modelCombobox()?.open();
+    queueMicrotask(() => {
+      this.modelInput()?.element.focus();
+    });
   }
 
   toggleFavoriteModel(modelId: string, event: Event): void {
@@ -166,6 +203,28 @@ export class AppComponent {
     await this.store.refreshModels();
   }
 
+  private captureModelSnapshots(): void {
+    const favorites = new Set(this.favoriteModelIds());
+    const favoriteIds: string[] = [];
+    const otherIds: string[] = [];
+
+    for (const model of this.modelCache().items) {
+      if (favorites.has(model.id)) {
+        favoriteIds.push(model.id);
+      } else {
+        otherIds.push(model.id);
+      }
+    }
+
+    this.modelFavoriteSnapshotIds.set(favoriteIds);
+    this.modelOtherSnapshotIds.set(otherIds);
+  }
+
+  private clearModelSnapshots(): void {
+    this.modelFavoriteSnapshotIds.set(null);
+    this.modelOtherSnapshotIds.set(null);
+  }
+
   private matchesModelQuery(model: ModelOption, query: string): boolean {
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) {
@@ -174,5 +233,21 @@ export class AppComponent {
 
     return model.name.toLowerCase().includes(normalizedQuery)
       || model.id.toLowerCase().includes(normalizedQuery);
+  }
+
+  private resolveModelsFromSnapshot(
+    snapshotIds: string[] | null,
+    fallbackFilter: (model: ModelOption) => boolean,
+  ): ModelOption[] {
+    const items = this.modelCache().items;
+
+    if (!snapshotIds) {
+      return items.filter(fallbackFilter);
+    }
+
+    const itemById = new Map(items.map((model) => [model.id, model]));
+    return snapshotIds
+      .map((id) => itemById.get(id) ?? null)
+      .filter((model): model is ModelOption => model !== null);
   }
 }

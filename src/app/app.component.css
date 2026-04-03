@@ -165,8 +165,29 @@ h2 {
   position: relative;
 }
 
+.model-picker-input-wrap {
+  position: relative;
+}
+
 .model-picker-input {
   width: 100%;
+  padding-right: 42px;
+}
+
+.model-picker-toggle {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+}
+
+.model-picker-toggle:hover {
+  transform: translateY(-50%);
 }
 
 .model-picker-popup {
