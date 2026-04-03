@@ -6,6 +6,7 @@ type IconName =
   | "square"
   | "refresh-cw"
   | "refresh-ccw"
+  | "star"
   | "bold"
   | "italic"
   | "heading-1"
@@ -42,6 +43,12 @@ const ICONS: Record<IconName, IconDefinition> = {
     paths: [
       "M3 12a9 9 0 1 0 3.2-6.9",
       "M3 3v6h6",
+    ],
+  },
+  "star": {
+    viewBox: "0 0 24 24",
+    paths: [
+      "M12 3.7l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 17l-5.2 2.7 1-5.8L3.6 9.8l5.8-.8L12 3.7z",
     ],
   },
   "bold": {

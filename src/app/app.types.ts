@@ -41,6 +41,7 @@ export interface DocumentSummary {
 export interface AppSettings {
   apiKey: string;
   model: string;
+  favoriteModelIds: string[];
   maxTokens: number;
   temperature: number;
   topP: number;
@@ -96,6 +97,13 @@ export interface PersistedBootstrapState {
 export interface LegacyLocalStorageState {
   documents: DocumentRecord[];
   activeDocumentId: string | null;
-  settings: AppSettings;
+  settings: {
+    apiKey: string;
+    model: string;
+    maxTokens: number;
+    temperature: number;
+    topP: number;
+    systemPrompt: string;
+  };
   modelCache: Omit<ModelCacheState, "isLoading" | "error">;
 }

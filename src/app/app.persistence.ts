@@ -2,6 +2,7 @@ import { Injectable } from "@angular/core";
 import { previewTextFromContent } from "./content-utils";
 import {
   AppMetaState,
+  AppSettings,
   DocumentSummary,
   LegacyLocalStorageState,
   PersistedAppState,
@@ -267,7 +268,7 @@ export class AppPersistenceService {
     return this.createNormalizedState(
       documents,
       legacyState.activeDocumentId ?? null,
-      legacyState.settings,
+      this.normalizeSettings(legacyState.settings),
       legacyState.modelCache,
     );
   }
@@ -276,7 +277,7 @@ export class AppPersistenceService {
     return this.createNormalizedState(
       legacyState.documents,
       legacyState.activeDocumentId ?? null,
-      legacyState.settings,
+      this.normalizeSettings(legacyState.settings),
       legacyState.modelCache,
     );
   }
@@ -302,6 +303,20 @@ export class AppPersistenceService {
       },
       documentsById: new Map(normalizedDocuments.map((document) => [document.id, document])),
       summaries: normalizedDocuments.map((document) => this.toSummary(document)),
+    };
+  }
+
+  private normalizeSettings(settings: Partial<AppSettings>): AppSettings {
+    return {
+      apiKey: settings.apiKey ?? "",
+      model: settings.model ?? "",
+      favoriteModelIds: Array.isArray(settings.favoriteModelIds)
+        ? settings.favoriteModelIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+        : [],
+      maxTokens: settings.maxTokens ?? 256,
+      temperature: settings.temperature ?? 0.9,
+      topP: settings.topP ?? 1,
+      systemPrompt: settings.systemPrompt ?? "",
     };
   }
 

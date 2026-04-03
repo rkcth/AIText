@@ -167,17 +167,109 @@
           ></app-icon>
         </button>
       </span>
-      <select
-        [ngModel]="settings().model"
-        (ngModelChange)="store.updateSetting('model', $event)"
+
+      <div
+        class="model-picker"
+        ngCombobox
+        filterMode="manual"
+        [firstMatch]="firstMatchingModelId()"
       >
-        <option value="">Choose a model</option>
-        @for (model of modelCache().items; track model.id) {
-          <option [value]="model.id">
-            {{ model.name }} ({{ model.id }})
-          </option>
-        }
-      </select>
+        <input
+          ngComboboxInput
+          class="model-picker-input"
+          placeholder="Search models by name or id"
+          [value]="modelQuery()"
+          (valueChange)="modelQuery.set($event)"
+          (focus)="onModelQueryFocus()"
+          (blur)="onModelQueryBlur()"
+        />
+
+        <ng-template ngComboboxPopupContainer>
+          <div
+            class="model-picker-popup"
+            ngComboboxPopup
+            ngListbox
+            [values]="selectedModelValues()"
+            (valuesChange)="onModelSelectionChange($event)"
+          >
+            @if (!hasModelMatches()) {
+              <div class="model-empty-state">No matching models found.</div>
+            } @else {
+              @for (model of filteredFavoriteModels(); track model.id) {
+                <div
+                  class="model-option"
+                  ngOption
+                  [value]="model.id"
+                  [label]="modelLabel(model)"
+                >
+                  <button
+                    type="button"
+                    class="favorite-toggle"
+                    [class.active]="isFavoriteModel(model.id)"
+                    [attr.aria-label]="
+                      isFavoriteModel(model.id)
+                        ? 'Remove ' + model.name + ' from favorites'
+                        : 'Add ' + model.name + ' to favorites'
+                    "
+                    [title]="
+                      isFavoriteModel(model.id)
+                        ? 'Remove from favorites'
+                        : 'Add to favorites'
+                    "
+                    (mousedown)="preventModelOptionDefault($event)"
+                    (click)="toggleFavoriteModel(model.id, $event)"
+                  >
+                    <app-icon name="star" [size]="16" [strokeWidth]="2"></app-icon>
+                  </button>
+
+                  <div class="model-option-text">
+                    <span class="model-option-name">{{ model.name }}</span>
+                    <span class="model-option-id">{{ model.id }}</span>
+                  </div>
+                </div>
+              }
+
+              @if (filteredFavoriteModels().length > 0 && filteredOtherModels().length > 0) {
+                <div class="model-separator" role="separator" aria-hidden="true"></div>
+              }
+
+              @for (model of filteredOtherModels(); track model.id) {
+                <div
+                  class="model-option"
+                  ngOption
+                  [value]="model.id"
+                  [label]="modelLabel(model)"
+                >
+                  <button
+                    type="button"
+                    class="favorite-toggle"
+                    [class.active]="isFavoriteModel(model.id)"
+                    [attr.aria-label]="
+                      isFavoriteModel(model.id)
+                        ? 'Remove ' + model.name + ' from favorites'
+                        : 'Add ' + model.name + ' to favorites'
+                    "
+                    [title]="
+                      isFavoriteModel(model.id)
+                        ? 'Remove from favorites'
+                        : 'Add to favorites'
+                    "
+                    (mousedown)="preventModelOptionDefault($event)"
+                    (click)="toggleFavoriteModel(model.id, $event)"
+                  >
+                    <app-icon name="star" [size]="16" [strokeWidth]="2"></app-icon>
+                  </button>
+
+                  <div class="model-option-text">
+                    <span class="model-option-name">{{ model.name }}</span>
+                    <span class="model-option-id">{{ model.id }}</span>
+                  </div>
+                </div>
+              }
+            }
+          </div>
+        </ng-template>
+      </div>
     </label>
 
     @if (store.selectedModelMissing()) {

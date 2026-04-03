@@ -33,6 +33,7 @@ const SAVE_DEBOUNCE_MS = 500;
 const defaultSettings = (): AppSettings => ({
   apiKey: "",
   model: "",
+  favoriteModelIds: [],
   maxTokens: 256,
   temperature: 0.9,
   topP: 1,
@@ -340,6 +341,25 @@ export class AppStore {
               ? clampNumber(Number(value), 0, 1)
               : value,
     }));
+  }
+
+  toggleFavoriteModel(modelId: string): void {
+    const trimmedModelId = modelId.trim();
+    if (!trimmedModelId) {
+      return;
+    }
+
+    this.settings.update((settings) => {
+      const favorites = settings.favoriteModelIds.filter((id) => id.trim().length > 0);
+      const alreadyFavorite = favorites.includes(trimmedModelId);
+
+      return {
+        ...settings,
+        favoriteModelIds: alreadyFavorite
+          ? favorites.filter((id) => id !== trimmedModelId)
+          : [trimmedModelId, ...favorites],
+      };
+    });
   }
 
   async refreshModels(): Promise<void> {
