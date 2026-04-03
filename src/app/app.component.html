@@ -25,7 +25,7 @@
         >
           <span class="document-title">{{ document.title }}</span>
           <span class="document-preview">
-            {{ previewText(document.content) }}
+            {{ document.preview }}
           </span>
         </button>
       }
@@ -242,7 +242,7 @@
         }}
       </p>
       <p class="meta">
-        Your key and settings stay in local storage on this device. There is no backend.
+        Your key and settings stay in IndexedDB on this device. There is no backend.
       </p>
     </div>
 

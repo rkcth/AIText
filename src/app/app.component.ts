@@ -2,7 +2,6 @@ import { CommonModule } from "@angular/common";
 import { Component, ViewChild, computed, inject } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { AppStore } from "./app.store";
-import { previewTextFromContent } from "./content-utils";
 import { IconComponent } from "./icon/icon.component";
 import { RichTextEditorComponent } from "./rich-text-editor/rich-text-editor.component";
 
@@ -28,10 +27,6 @@ export class AppComponent {
   readonly settings = this.store.settings;
   readonly modelCache = this.store.modelCache;
   readonly documentCount = computed(() => this.store.documents().length);
-
-  previewText(content: string): string {
-    return previewTextFromContent(content);
-  }
 
   onEditorChange(content: string): void {
     this.store.updateActiveDocumentContent(content);

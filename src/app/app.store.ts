@@ -6,24 +6,27 @@ import {
   signal,
 } from "@angular/core";
 import {
+  AppMetaState,
   AppSettings,
   DocumentRecord,
+  DocumentSummary,
   GenerationState,
   HistoryEntry,
   ModelCacheState,
-  PersistedAppState,
+  StoredDocumentRecord,
 } from "./app.types";
 import {
   EMPTY_DOCUMENT_MARKDOWN,
   appendPlainTextToContent,
   markdownToPlainText,
   normalizeStoredContent,
+  previewTextFromContent,
 } from "./content-utils";
+import { AppPersistenceService } from "./app.persistence";
 import { OpenRouterService } from "./openrouter.service";
 
 type SettingKey = keyof AppSettings;
 
-const STORAGE_KEY = "aitext.state.v1";
 const USER_HISTORY_DEBOUNCE_MS = 900;
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -70,7 +73,10 @@ const clampNumber = (value: number, min: number, max: number): number =>
 @Injectable({ providedIn: "root" })
 export class AppStore {
   private readonly openRouter = inject(OpenRouterService);
-  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly persistence = inject(AppPersistenceService);
+  private metaSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  private documentSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingPersistOperations = 0;
   private pendingUserHistory:
     | {
         documentId: string;
@@ -80,8 +86,10 @@ export class AppStore {
     | null = null;
   private pendingUserTimer: ReturnType<typeof setTimeout> | null = null;
   private activeAbortController: AbortController | null = null;
+  private readonly isHydrated = signal(false);
+  private readonly activeDocumentState = signal<DocumentRecord | null>(null);
 
-  readonly documents = signal<DocumentRecord[]>([]);
+  readonly documents = signal<DocumentSummary[]>([]);
   readonly activeDocumentId = signal<string | null>(null);
   readonly settings = signal<AppSettings>(defaultSettings());
   readonly modelCache = signal<ModelCacheState>({
@@ -93,10 +101,7 @@ export class AppStore {
   readonly generation = signal<GenerationState>(defaultGeneration());
   readonly saveState = signal<"saved" | "saving">("saved");
 
-  readonly activeDocument = computed(() => {
-    const activeId = this.activeDocumentId();
-    return this.documents().find((doc) => doc.id === activeId) ?? null;
-  });
+  readonly activeDocument = computed(() => this.activeDocumentState());
 
   readonly canUndo = computed(() => {
     const document = this.activeDocument();
@@ -128,49 +133,58 @@ export class AppStore {
   });
 
   constructor() {
-    this.loadState();
-
     effect(() => {
-      const payload: PersistedAppState = {
-        documents: this.documents(),
-        activeDocumentId: this.activeDocumentId(),
-        settings: this.settings(),
-        modelCache: {
-          items: this.modelCache().items,
-          fetchedAt: this.modelCache().fetchedAt,
-        },
-      };
+      if (!this.isHydrated()) {
+        return;
+      }
 
-      this.schedulePersist(payload);
+      this.scheduleMetaPersist(this.createMetaState());
     });
 
     window.addEventListener("beforeunload", () => {
       this.flushPendingUserHistory();
-      this.persistNow();
+      void this.persistNow();
     });
 
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") {
         this.flushPendingUserHistory();
-        this.persistNow();
+        void this.persistNow();
       }
     });
+
+    void this.initialize();
   }
 
   createNewDocument(): void {
     this.flushPendingUserHistory();
     const nextDocument = createDocument(this.documents().length + 1);
-    this.documents.update((documents) => [nextDocument, ...documents]);
+
+    this.documents.update((documents) => [this.toSummary(nextDocument), ...documents]);
+    this.activeDocumentState.set(nextDocument);
     this.activeDocumentId.set(nextDocument.id);
+    this.generation.set(defaultGeneration());
+    this.scheduleActiveDocumentPersist();
   }
 
-  selectDocument(documentId: string): void {
-    if (this.activeDocumentId() === documentId) {
+  async selectDocument(documentId: string): Promise<void> {
+    if (this.activeDocumentId() === documentId || this.isStreaming()) {
       return;
     }
 
     this.flushPendingUserHistory();
+    await this.persistNow();
+
     this.activeDocumentId.set(documentId);
+    this.activeDocumentState.set(null);
+    this.generation.set(defaultGeneration());
+
+    const documentRecord = await this.persistence.loadDocument(documentId);
+    if (!documentRecord) {
+      return;
+    }
+
+    this.activeDocumentState.set(this.hydrateStoredDocument(documentRecord));
   }
 
   renameDocument(documentId: string, title: string): void {
@@ -183,35 +197,61 @@ export class AppStore {
   }
 
   finalizeDocumentTitle(documentId: string): void {
-    const document = this.documents().find((entry) => entry.id === documentId);
-    if (!document) {
+    const document = this.activeDocument();
+    if (!document || document.id !== documentId) {
       return;
     }
 
     const trimmed = document.title.trim();
     const nextTitle = trimmed || `Untitled ${this.getDocumentIndex(documentId)}`;
-    this.updateDocument(documentId, (document) => ({
-      ...document,
+    this.updateDocument(documentId, (currentDocument) => ({
+      ...currentDocument,
       title: nextTitle,
       isTitleManual: trimmed.length > 0,
       updatedAt: Date.now(),
     }));
   }
 
-  deleteDocument(documentId: string): void {
+  async deleteDocument(documentId: string): Promise<void> {
+    if (this.isStreaming()) {
+      return;
+    }
+
+    this.flushPendingUserHistory();
+    await this.persistNow();
+
     const currentDocuments = this.documents();
     if (currentDocuments.length === 1) {
       const replacement = createDocument(1);
-      this.documents.set([replacement]);
+      this.documents.set([this.toSummary(replacement)]);
+      this.activeDocumentState.set(replacement);
       this.activeDocumentId.set(replacement.id);
+      this.generation.set(defaultGeneration());
+
+      await this.persistence.deleteDocument(documentId);
+      this.scheduleActiveDocumentPersist();
       return;
     }
 
     const nextDocuments = currentDocuments.filter((document) => document.id !== documentId);
     this.documents.set(nextDocuments);
+    await this.persistence.deleteDocument(documentId);
 
     if (this.activeDocumentId() === documentId) {
-      this.activeDocumentId.set(nextDocuments[0]?.id ?? null);
+      const nextActiveId = nextDocuments[0]?.id ?? null;
+      this.activeDocumentId.set(nextActiveId);
+      this.generation.set(defaultGeneration());
+
+      if (!nextActiveId) {
+        this.activeDocumentState.set(null);
+        return;
+      }
+
+      const nextActiveDocument = await this.persistence.loadDocument(nextActiveId);
+      this.activeDocumentState.set(
+        nextActiveDocument ? this.hydrateStoredDocument(nextActiveDocument) : null,
+      );
+      return;
     }
   }
 
@@ -244,8 +284,8 @@ export class AppStore {
       ...document,
       content: entry.before,
       updatedAt: Date.now(),
-      undoStack: document.undoStack.slice(0, -1),
-      redoStack: [...document.redoStack, entry],
+      undoStack: [],
+      redoStack: [entry],
     }));
   }
 
@@ -261,8 +301,8 @@ export class AppStore {
       ...document,
       content: entry.after,
       updatedAt: Date.now(),
-      undoStack: [...document.undoStack, entry],
-      redoStack: document.redoStack.slice(0, -1),
+      undoStack: [entry],
+      redoStack: [],
     }));
   }
 
@@ -278,7 +318,7 @@ export class AppStore {
       ...document,
       content: lastEntry.before,
       updatedAt: Date.now(),
-      undoStack: document.undoStack.slice(0, -1),
+      undoStack: [],
       redoStack: [],
     }));
 
@@ -420,12 +460,11 @@ export class AppStore {
     errorMessage: string | null = null,
   ): void {
     const state = this.generation();
-    const activeDocument = state.documentId
-      ? this.documents().find((document) => document.id === state.documentId) ?? null
-      : null;
+    const activeDocument = this.activeDocument();
 
     if (
       activeDocument &&
+      activeDocument.id === state.documentId &&
       state.insertedText &&
       activeDocument.content === appendPlainTextToContent(state.baseContent, state.insertedText)
     ) {
@@ -516,7 +555,7 @@ export class AppStore {
 
       return {
         ...document,
-        undoStack: [...document.undoStack, entry],
+        undoStack: [entry],
         redoStack: [],
       };
     });
@@ -526,10 +565,21 @@ export class AppStore {
     documentId: string,
     updater: (document: DocumentRecord) => DocumentRecord,
   ): void {
+    const activeDocument = this.activeDocument();
+    if (!activeDocument || activeDocument.id !== documentId) {
+      return;
+    }
+
+    const nextDocument = updater(activeDocument);
+    this.activeDocumentState.set(nextDocument);
+    this.updateSummaryFromDocument(nextDocument);
+    this.scheduleActiveDocumentPersist();
+  }
+
+  private updateSummaryFromDocument(document: DocumentRecord): void {
+    const summary = this.toSummary(document);
     this.documents.update((documents) =>
-      documents.map((document) =>
-        document.id === documentId ? updater(document) : document,
-      ),
+      documents.map((entry) => (entry.id === document.id ? summary : entry)),
     );
   }
 
@@ -538,75 +588,203 @@ export class AppStore {
     return index >= 0 ? index + 1 : 1;
   }
 
-  private schedulePersist(payload: PersistedAppState): void {
+  private scheduleMetaPersist(meta: AppMetaState): void {
     this.saveState.set("saving");
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
+    if (this.metaSaveTimer) {
+      clearTimeout(this.metaSaveTimer);
     }
 
-    this.saveTimer = window.setTimeout(() => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-      this.saveTimer = null;
-      this.saveState.set("saved");
+    this.metaSaveTimer = window.setTimeout(() => {
+      this.runPersistOperation(
+        () => this.persistence.saveMeta(meta),
+        () => {
+          this.metaSaveTimer = null;
+        },
+      );
     }, SAVE_DEBOUNCE_MS);
   }
 
-  private persistNow(): void {
-    const payload: PersistedAppState = {
-      documents: this.documents(),
+  private scheduleActiveDocumentPersist(): void {
+    if (!this.isHydrated()) {
+      return;
+    }
+
+    const activeDocument = this.activeDocument();
+    if (!activeDocument) {
+      return;
+    }
+
+    const storedDocument = this.toStoredDocument(activeDocument);
+    this.saveState.set("saving");
+
+    if (this.documentSaveTimer) {
+      clearTimeout(this.documentSaveTimer);
+    }
+
+    this.documentSaveTimer = window.setTimeout(() => {
+      this.runPersistOperation(
+        () => this.persistence.saveDocument(storedDocument),
+        () => {
+          this.documentSaveTimer = null;
+        },
+      );
+    }, SAVE_DEBOUNCE_MS);
+  }
+
+  private runPersistOperation(
+    operation: () => Promise<void>,
+    finalize: () => void,
+  ): void {
+    this.pendingPersistOperations += 1;
+
+    void operation()
+      .catch((error) => {
+        console.error("Unable to persist app state.", error);
+      })
+      .finally(() => {
+        this.pendingPersistOperations -= 1;
+        finalize();
+        this.updateSaveState();
+      });
+  }
+
+  private updateSaveState(): void {
+    if (this.metaSaveTimer || this.documentSaveTimer || this.pendingPersistOperations > 0) {
+      this.saveState.set("saving");
+      return;
+    }
+
+    this.saveState.set("saved");
+  }
+
+  private async persistNow(): Promise<void> {
+    if (!this.isHydrated()) {
+      return;
+    }
+
+    if (this.metaSaveTimer) {
+      clearTimeout(this.metaSaveTimer);
+      this.metaSaveTimer = null;
+    }
+
+    if (this.documentSaveTimer) {
+      clearTimeout(this.documentSaveTimer);
+      this.documentSaveTimer = null;
+    }
+
+    this.saveState.set("saving");
+
+    try {
+      const activeDocument = this.activeDocument();
+      if (activeDocument) {
+        await this.persistence.saveDocument(this.toStoredDocument(activeDocument));
+      }
+
+      await this.persistence.saveMeta(this.createMetaState());
+    } catch (error) {
+      console.error("Unable to persist app state.", error);
+    } finally {
+      this.updateSaveState();
+    }
+  }
+
+  private async initialize(): Promise<void> {
+    const persisted = await this.persistence.load();
+
+    if (!persisted) {
+      const initialDocument = createDocument(1);
+      this.documents.set([this.toSummary(initialDocument)]);
+      this.activeDocumentId.set(initialDocument.id);
+      this.activeDocumentState.set(initialDocument);
+      this.isHydrated.set(true);
+      this.scheduleActiveDocumentPersist();
+      return;
+    }
+
+    this.documents.set(persisted.summaries);
+    this.activeDocumentId.set(persisted.meta.activeDocumentId);
+    this.settings.set({
+      ...defaultSettings(),
+      ...persisted.meta.settings,
+    });
+    this.modelCache.set({
+      items: persisted.meta.modelCache?.items ?? [],
+      fetchedAt: persisted.meta.modelCache?.fetchedAt ?? null,
+      isLoading: false,
+      error: null,
+    });
+
+    const activeDocument = persisted.activeDocument
+      ?? (persisted.meta.activeDocumentId
+        ? await this.persistence.loadDocument(persisted.meta.activeDocumentId)
+        : null);
+
+    if (activeDocument) {
+      this.activeDocumentState.set(this.hydrateStoredDocument(activeDocument));
+    } else if (persisted.summaries[0]) {
+      const fallbackDocument = await this.persistence.loadDocument(persisted.summaries[0].id);
+      this.activeDocumentId.set(fallbackDocument?.id ?? null);
+      this.activeDocumentState.set(
+        fallbackDocument ? this.hydrateStoredDocument(fallbackDocument) : null,
+      );
+    } else {
+      const initialDocument = createDocument(1);
+      this.documents.set([this.toSummary(initialDocument)]);
+      this.activeDocumentId.set(initialDocument.id);
+      this.activeDocumentState.set(initialDocument);
+      this.isHydrated.set(true);
+      this.scheduleActiveDocumentPersist();
+      return;
+    }
+
+    this.isHydrated.set(true);
+  }
+
+  private createMetaState(): AppMetaState {
+    return {
       activeDocumentId: this.activeDocumentId(),
+      documentOrder: this.documents().map((document) => document.id),
       settings: this.settings(),
       modelCache: {
         items: this.modelCache().items,
         fetchedAt: this.modelCache().fetchedAt,
       },
     };
-
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    this.saveState.set("saved");
   }
 
-  private loadState(): void {
-    const rawState = localStorage.getItem(STORAGE_KEY);
+  private hydrateStoredDocument(document: StoredDocumentRecord): DocumentRecord {
+    return {
+      id: document.id,
+      title: document.title,
+      isTitleManual: document.isTitleManual,
+      content: normalizeStoredContent(document.content),
+      createdAt: document.createdAt,
+      updatedAt: document.updatedAt,
+      undoStack: [],
+      redoStack: [],
+    };
+  }
 
-    if (!rawState) {
-      const initialDocument = createDocument(1);
-      this.documents.set([initialDocument]);
-      this.activeDocumentId.set(initialDocument.id);
-      return;
-    }
+  private toStoredDocument(document: DocumentRecord): StoredDocumentRecord {
+    return {
+      id: document.id,
+      title: document.title,
+      isTitleManual: document.isTitleManual,
+      content: normalizeStoredContent(document.content),
+      createdAt: document.createdAt,
+      updatedAt: document.updatedAt,
+    };
+  }
 
-    try {
-      const parsed = JSON.parse(rawState) as Partial<PersistedAppState>;
-      const documents = Array.isArray(parsed.documents) && parsed.documents.length > 0
-        ? parsed.documents.map((document) => ({
-          ...document,
-          content: normalizeStoredContent(document.content),
-        }))
-        : [createDocument(1)];
-
-      this.documents.set(documents);
-      this.activeDocumentId.set(parsed.activeDocumentId ?? documents[0]?.id ?? null);
-      this.settings.set({
-        ...defaultSettings(),
-        ...parsed.settings,
-      });
-      this.modelCache.set({
-        items: parsed.modelCache?.items ?? [],
-        fetchedAt: parsed.modelCache?.fetchedAt ?? null,
-        isLoading: false,
-        error: null,
-      });
-    } catch {
-      const initialDocument = createDocument(1);
-      this.documents.set([initialDocument]);
-      this.activeDocumentId.set(initialDocument.id);
-    }
+  private toSummary(document: Pick<DocumentRecord, "id" | "title" | "isTitleManual" | "content" | "createdAt" | "updatedAt">): DocumentSummary {
+    return {
+      id: document.id,
+      title: document.title,
+      isTitleManual: document.isTitleManual,
+      preview: previewTextFromContent(document.content),
+      createdAt: document.createdAt,
+      updatedAt: document.updatedAt,
+    };
   }
 
   private toErrorMessage(error: unknown): string {
