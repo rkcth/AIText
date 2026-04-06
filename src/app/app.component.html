@@ -232,7 +232,12 @@
                     (mousedown)="preventModelOptionDefault($event)"
                     (click)="toggleFavoriteModel(model.id, $event)"
                   >
-                    <app-icon name="star" [size]="16" [strokeWidth]="2"></app-icon>
+                    <app-icon
+                      name="star"
+                      [size]="16"
+                      [strokeWidth]="2"
+                      [filled]="isFavoriteModel(model.id)"
+                    ></app-icon>
                   </button>
 
                   <div class="model-option-text">
@@ -270,7 +275,12 @@
                     (mousedown)="preventModelOptionDefault($event)"
                     (click)="toggleFavoriteModel(model.id, $event)"
                   >
-                    <app-icon name="star" [size]="16" [strokeWidth]="2"></app-icon>
+                    <app-icon
+                      name="star"
+                      [size]="16"
+                      [strokeWidth]="2"
+                      [filled]="isFavoriteModel(model.id)"
+                    ></app-icon>
                   </button>
 
                   <div class="model-option-text">

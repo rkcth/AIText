@@ -140,6 +140,7 @@ export class IconComponent {
   @Input({ required: true }) name!: IconName;
   @Input() size = 18;
   @Input() strokeWidth = 2;
+  @Input() filled = false;
 
   icon(): IconDefinition | null {
     return ICONS[this.name] ?? null;

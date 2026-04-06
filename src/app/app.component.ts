@@ -120,6 +120,18 @@ export class AppComponent {
       this.lastModelPickerExpanded = expanded;
     });
 
+    effect(() => {
+      const expanded = this.modelCombobox()?.expanded() ?? false;
+
+      if (!expanded) {
+        return;
+      }
+
+      this.favoriteModelIds();
+      this.modelCache().items;
+      this.captureModelSnapshots();
+    });
+
     afterNextRender(() => {
       window.setTimeout(() => {
         void this.store.refreshModels();

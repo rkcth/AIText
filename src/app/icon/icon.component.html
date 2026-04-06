@@ -2,7 +2,7 @@
   <svg
     class="app-icon"
     xmlns="http://www.w3.org/2000/svg"
-    fill="none"
+    [attr.fill]="filled ? 'currentColor' : 'none'"
     [attr.viewBox]="currentIcon.viewBox"
     [attr.width]="size"
     [attr.height]="size"

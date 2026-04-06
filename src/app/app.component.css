@@ -289,10 +289,6 @@ h2 {
   color: var(--accent);
 }
 
-.favorite-toggle.active .app-icon {
-  fill: currentColor;
-}
-
 .model-separator {
   height: 1px;
   margin: 8px 4px;
