@@ -51,8 +51,7 @@ export class AppComponent {
   readonly modelQuery = signal("");
   readonly modelPickerFocused = signal(false);
   readonly selectedModelValues = signal<string[]>([]);
-  readonly modelFavoriteSnapshotIds = signal<string[] | null>(null);
-  readonly modelOtherSnapshotIds = signal<string[] | null>(null);
+  readonly modelSnapshotIds = signal<string[] | null>(null);
   readonly favoriteModelIds = computed(() => this.settings().favoriteModelIds);
   readonly selectedModel = computed(() =>
     this.modelCache().items.find((model) => model.id === this.settings().model) ?? null,
@@ -73,29 +72,26 @@ export class AppComponent {
       ? this.modelQuery()
       : this.selectedModelLabel();
   });
-  readonly popupFavoriteModels = computed(() =>
-    this.resolveModelsFromSnapshot(
-      this.modelFavoriteSnapshotIds(),
-      (model) => this.favoriteModelIds().includes(model.id),
-    ),
-  );
-  readonly popupOtherModels = computed(() =>
-    this.resolveModelsFromSnapshot(
-      this.modelOtherSnapshotIds(),
-      (model) => !this.favoriteModelIds().includes(model.id),
-    ),
+  readonly popupFavoriteModels = computed(() => {
+    const itemById = new Map(this.modelCache().items.map((model) => [model.id, model]));
+    return this.favoriteModelIds()
+      .map((id) => itemById.get(id) ?? null)
+      .filter((model): model is ModelOption => model !== null);
+  });
+  readonly popupAllModels = computed(() =>
+    this.resolveModelsFromSnapshot(this.modelSnapshotIds()),
   );
   readonly filteredFavoriteModels = computed(() =>
     this.popupFavoriteModels().filter((model) => this.matchesModelQuery(model, this.modelQuery())),
   );
-  readonly filteredOtherModels = computed(() =>
-    this.popupOtherModels().filter((model) => this.matchesModelQuery(model, this.modelQuery())),
+  readonly filteredAllModels = computed(() =>
+    this.popupAllModels().filter((model) => this.matchesModelQuery(model, this.modelQuery())),
   );
   readonly firstMatchingModelId = computed(() =>
-    this.filteredFavoriteModels()[0]?.id ?? this.filteredOtherModels()[0]?.id,
+    this.filteredFavoriteModels()[0]?.id ?? this.filteredAllModels()[0]?.id,
   );
   readonly hasModelMatches = computed(() =>
-    this.filteredFavoriteModels().length + this.filteredOtherModels().length > 0,
+    this.filteredFavoriteModels().length + this.filteredAllModels().length > 0,
   );
 
   constructor() {
@@ -127,7 +123,6 @@ export class AppComponent {
         return;
       }
 
-      this.favoriteModelIds();
       this.modelCache().items;
       this.captureModelSnapshots();
     });
@@ -218,25 +213,11 @@ export class AppComponent {
   }
 
   private captureModelSnapshots(): void {
-    const favorites = new Set(this.favoriteModelIds());
-    const favoriteIds: string[] = [];
-    const otherIds: string[] = [];
-
-    for (const model of this.modelCache().items) {
-      if (favorites.has(model.id)) {
-        favoriteIds.push(model.id);
-      } else {
-        otherIds.push(model.id);
-      }
-    }
-
-    this.modelFavoriteSnapshotIds.set(favoriteIds);
-    this.modelOtherSnapshotIds.set(otherIds);
+    this.modelSnapshotIds.set(this.modelCache().items.map((model) => model.id));
   }
 
   private clearModelSnapshots(): void {
-    this.modelFavoriteSnapshotIds.set(null);
-    this.modelOtherSnapshotIds.set(null);
+    this.modelSnapshotIds.set(null);
   }
 
   private matchesModelQuery(model: ModelOption, query: string): boolean {
@@ -249,14 +230,11 @@ export class AppComponent {
       || model.id.toLowerCase().includes(normalizedQuery);
   }
 
-  private resolveModelsFromSnapshot(
-    snapshotIds: string[] | null,
-    fallbackFilter: (model: ModelOption) => boolean,
-  ): ModelOption[] {
+  private resolveModelsFromSnapshot(snapshotIds: string[] | null): ModelOption[] {
     const items = this.modelCache().items;
 
     if (!snapshotIds) {
-      return items.filter(fallbackFilter);
+      return items;
     }
 
     const itemById = new Map(items.map((model) => [model.id, model]));

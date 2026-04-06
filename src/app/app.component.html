@@ -247,11 +247,11 @@
                 </div>
               }
 
-              @if (filteredFavoriteModels().length > 0 && filteredOtherModels().length > 0) {
+              @if (filteredFavoriteModels().length > 0 && filteredAllModels().length > 0) {
                 <div class="model-separator" role="separator" aria-hidden="true"></div>
               }
 
-              @for (model of filteredOtherModels(); track model.id) {
+              @for (model of filteredAllModels(); track model.id) {
                 <div
                   class="model-option"
                   ngOption
