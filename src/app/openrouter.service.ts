@@ -1,12 +1,13 @@
 import { Injectable } from "@angular/core";
 import { AppSettings, ModelOption } from "./app.types";
 
-interface OpenRouterModelResponse {
+interface ModelsResponse {
   data?: Array<{
     id?: string;
     name?: string;
     description?: string;
     context_length?: number;
+    max_model_len?: number;
   }>;
 }
 
@@ -16,31 +17,29 @@ interface StreamHandlers {
 
 @Injectable({ providedIn: "root" })
 export class OpenRouterService {
-  private readonly modelsUrl = "https://openrouter.ai/api/v1/models";
-  private readonly completionsUrl = "https://openrouter.ai/api/v1/chat/completions";
+  private readonly openRouterUrl = "https://openrouter.ai/api/v1";
 
-  async fetchModels(apiKey: string): Promise<ModelOption[]> {
-    const headers: Record<string, string> = {};
-
-    if (apiKey.trim()) {
-      headers["Authorization"] = `Bearer ${apiKey.trim()}`;
-    }
-
-    const response = await fetch(this.modelsUrl, { headers });
+  async fetchModels(settings: AppSettings): Promise<ModelOption[]> {
+    const response = await fetch(`${this.baseUrl(settings)}/models`, {
+      headers: this.headers(settings),
+    });
     if (!response.ok) {
       throw new Error(`Unable to fetch models (${response.status}).`);
     }
 
-    const payload = (await response.json()) as OpenRouterModelResponse;
+    const payload = (await response.json()) as ModelsResponse;
     return (payload.data ?? [])
-      .filter((item): item is Required<Pick<ModelOption, "id" | "name">> & {
+      .filter((item): item is {
+        id: string;
+        name?: string;
         context_length?: number;
+        max_model_len?: number;
         description?: string;
-      } => Boolean(item.id && item.name))
+      } => Boolean(item.id))
       .map((item) => ({
         id: item.id,
-        name: item.name,
-        contextLength: item.context_length ?? null,
+        name: item.name ?? item.id,
+        contextLength: item.context_length ?? item.max_model_len ?? null,
         description: item.description ?? "",
       }))
       .sort((left, right) => left.name.localeCompare(right.name));
@@ -70,15 +69,10 @@ export class OpenRouterService {
       ].join("\n"),
     });
 
-    const response = await fetch(this.completionsUrl, {
+    const response = await fetch(`${this.baseUrl(settings)}/chat/completions`, {
       method: "POST",
       signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.apiKey.trim()}`,
-        "HTTP-Referer": window.location.origin,
-        "X-Title": "AIText",
-      },
+      headers: this.headers(settings, true),
       body: JSON.stringify({
         model: settings.model,
         max_tokens: settings.maxTokens,
@@ -92,7 +86,7 @@ export class OpenRouterService {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
-        errorText || `OpenRouter request failed (${response.status}).`,
+        errorText || `AI request failed (${response.status}).`,
       );
     }
 
@@ -141,5 +135,27 @@ export class OpenRouterService {
         }
       }
     }
+  }
+
+  private baseUrl(settings: AppSettings): string {
+    return (settings.provider === "aiServer" ? settings.aiServerUrl : this.openRouterUrl)
+      .trim()
+      .replace(/\/$/, "");
+  }
+
+  private headers(settings: AppSettings, json = false): Record<string, string> {
+    const headers: Record<string, string> = json ? { "Content-Type": "application/json" } : {};
+    const apiKey = settings.apiKey.trim();
+
+    if (apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
+
+    if (settings.provider === "openrouter") {
+      headers["HTTP-Referer"] = window.location.origin;
+      headers["X-Title"] = "AIText";
+    }
+
+    return headers;
   }
 }

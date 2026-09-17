@@ -80,12 +80,12 @@
               <button
                 type="button"
                 class="editor-fab"
-                [disabled]="!settings().apiKey.trim() && !store.isStreaming()"
+                [disabled]="settings().provider === 'openrouter' && !settings().apiKey.trim() && !store.isStreaming()"
                 [attr.aria-label]="store.isStreaming() ? 'Stop completion' : 'Start completion'"
                 [title]="
                   store.isStreaming()
                     ? 'Stop completion'
-                    : (settings().apiKey.trim() ? 'Start completion' : 'Add an API key to enable completion')
+                    : (settings().provider === 'aiServer' || settings().apiKey.trim() ? 'Start completion' : 'Add an API key to enable completion')
                 "
                 (click)="store.isStreaming() ? store.stopGeneration() : requestCompletion()"
               >
@@ -133,19 +133,42 @@
     <div class="panel-header">
       <div>
         <p class="eyebrow">Settings</p>
-        <h2>OpenRouter</h2>
+        <h2>{{ settings().provider === 'aiServer' ? 'AI Server' : 'OpenRouter' }}</h2>
       </div>
     </div>
 
     <label class="field">
-      <span>API Key</span>
-      <input
-        type="password"
-        [ngModel]="settings().apiKey"
-        (ngModelChange)="store.updateSetting('apiKey', $event)"
-        placeholder="sk-or-v1-..."
-      />
+      <span>Provider</span>
+      <select
+        [ngModel]="settings().provider"
+        (ngModelChange)="store.updateSetting('provider', $event)"
+      >
+        <option value="openrouter">OpenRouter</option>
+        <option value="aiServer">AI Server</option>
+      </select>
     </label>
+
+    @if (settings().provider === 'aiServer') {
+      <label class="field">
+        <span>AI Server URL</span>
+        <input
+          type="url"
+          [ngModel]="settings().aiServerUrl"
+          (ngModelChange)="store.updateSetting('aiServerUrl', $event)"
+          placeholder="http://192.168.2.10:8002/v1"
+        />
+      </label>
+    } @else {
+      <label class="field">
+        <span>API Key</span>
+        <input
+          type="password"
+          [ngModel]="settings().apiKey"
+          (ngModelChange)="store.updateSetting('apiKey', $event)"
+          placeholder="sk-or-v1-..."
+        />
+      </label>
+    }
 
     <label class="field">
       <span class="field-header">

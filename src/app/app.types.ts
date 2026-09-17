@@ -38,8 +38,12 @@ export interface DocumentSummary {
   updatedAt: number;
 }
 
+export type AiProvider = "openrouter" | "aiServer";
+
 export interface AppSettings {
+  provider: AiProvider;
   apiKey: string;
+  aiServerUrl: string;
   model: string;
   favoriteModelIds: string[];
   maxTokens: number;
@@ -97,13 +101,6 @@ export interface PersistedBootstrapState {
 export interface LegacyLocalStorageState {
   documents: DocumentRecord[];
   activeDocumentId: string | null;
-  settings: {
-    apiKey: string;
-    model: string;
-    maxTokens: number;
-    temperature: number;
-    topP: number;
-    systemPrompt: string;
-  };
+  settings: Partial<AppSettings>;
   modelCache: Omit<ModelCacheState, "isLoading" | "error">;
 }

@@ -31,7 +31,9 @@ const USER_HISTORY_DEBOUNCE_MS = 900;
 const SAVE_DEBOUNCE_MS = 500;
 
 const defaultSettings = (): AppSettings => ({
+  provider: "openrouter",
   apiKey: "",
+  aiServerUrl: "http://192.168.2.10:8002/v1",
   model: "",
   favoriteModelIds: [],
   maxTokens: 256,
@@ -370,7 +372,7 @@ export class AppStore {
     }));
 
     try {
-      const items = await this.openRouter.fetchModels(this.settings().apiKey);
+      const items = await this.openRouter.fetchModels(this.settings());
       this.modelCache.set({
         items,
         fetchedAt: Date.now(),
@@ -400,7 +402,7 @@ export class AppStore {
       return;
     }
 
-    if (!settings.apiKey.trim()) {
+    if (settings.provider === "openrouter" && !settings.apiKey.trim()) {
       this.generation.set({
         ...defaultGeneration(),
         status: "error",
@@ -410,12 +412,22 @@ export class AppStore {
       return;
     }
 
+    if (settings.provider === "aiServer" && !settings.aiServerUrl.trim()) {
+      this.generation.set({
+        ...defaultGeneration(),
+        status: "error",
+        documentId: activeDocument.id,
+        error: "Add the AI server URL before requesting a completion.",
+      });
+      return;
+    }
+
     if (!settings.model.trim()) {
       this.generation.set({
         ...defaultGeneration(),
         status: "error",
         documentId: activeDocument.id,
-        error: "Choose an OpenRouter model before requesting a completion.",
+        error: "Choose a model before requesting a completion.",
       });
       return;
     }

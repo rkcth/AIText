@@ -308,7 +308,9 @@ export class AppPersistenceService {
 
   private normalizeSettings(settings: Partial<AppSettings>): AppSettings {
     return {
+      provider: settings.provider === "aiServer" ? "aiServer" : "openrouter",
       apiKey: settings.apiKey ?? "",
+      aiServerUrl: settings.aiServerUrl ?? "http://192.168.2.10:8002/v1",
       model: settings.model ?? "",
       favoriteModelIds: Array.isArray(settings.favoriteModelIds)
         ? settings.favoriteModelIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
