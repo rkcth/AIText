@@ -1,5 +1,5 @@
 import { Injectable } from "@angular/core";
-import { previewTextFromContent } from "./content-utils";
+import { normalizeStoredContent, previewTextFromContent } from "./content-utils";
 import {
   AppMetaState,
   AppSettings,
@@ -29,10 +29,15 @@ const LEGACY_RECORD_KEY = "current";
 
 @Injectable({ providedIn: "root" })
 export class AppPersistenceService {
+  private readonly useServerStorage = ["192.168.2.10", "ai-server"].includes(window.location.hostname);
   private dbPromise: Promise<IDBDatabase | null> | null = null;
   private writeQueue = Promise.resolve();
 
   async load(): Promise<PersistedBootstrapState | null> {
+    if (this.useServerStorage) {
+      return this.loadFromServer();
+    }
+
     const database = await this.openDatabase();
     if (!database) {
       return null;
@@ -57,12 +62,22 @@ export class AppPersistenceService {
   }
 
   async saveMeta(meta: AppMetaState): Promise<void> {
+    if (this.useServerStorage) {
+      await this.sendServerJson("/app-state/meta", "POST", meta);
+      return;
+    }
+
     return this.enqueueWrite(async (database) => {
       await this.putValue(database, META_STORE, meta, META_KEY);
     });
   }
 
   async saveDocument(document: StoredDocumentRecord): Promise<void> {
+    if (this.useServerStorage) {
+      await this.sendServerJson(`/app-state/documents/${encodeURIComponent(document.id)}`, "PUT", document);
+      return;
+    }
+
     return this.enqueueWrite(async (database) => {
       await new Promise<void>((resolve, reject) => {
         const transaction = database.transaction(
@@ -79,6 +94,17 @@ export class AppPersistenceService {
   }
 
   async loadDocument(documentId: string): Promise<StoredDocumentRecord | null> {
+    if (this.useServerStorage) {
+      const response = await fetch(`/app-state/documents/${encodeURIComponent(documentId)}`);
+      if (response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error(`Unable to load document: ${response.status}`);
+      }
+      return this.normalizeDocument(await response.json() as Partial<StoredDocumentRecord>);
+    }
+
     const database = await this.openDatabase();
     if (!database) {
       return null;
@@ -93,6 +119,14 @@ export class AppPersistenceService {
   }
 
   async deleteDocument(documentId: string): Promise<void> {
+    if (this.useServerStorage) {
+      const response = await fetch(`/app-state/documents/${encodeURIComponent(documentId)}`, { method: "DELETE" });
+      if (!response.ok) {
+        throw new Error(`Unable to delete document: ${response.status}`);
+      }
+      return;
+    }
+
     return this.enqueueWrite(async (database) => {
       await new Promise<void>((resolve, reject) => {
         const transaction = database.transaction(
@@ -260,6 +294,7 @@ export class AppPersistenceService {
         title: document.title,
         isTitleManual: document.isTitleManual,
         content: document.content,
+        folder: document.folder ?? "",
         createdAt: document.createdAt,
         updatedAt: document.updatedAt,
       }))
@@ -288,7 +323,9 @@ export class AppPersistenceService {
     settings: AppMetaState["settings"],
     modelCache: AppMetaState["modelCache"],
   ): NormalizedState {
-    const normalizedDocuments = Array.isArray(documents) ? documents : [];
+    const normalizedDocuments = Array.isArray(documents)
+      ? documents.map((document) => this.normalizeDocument(document))
+      : [];
     const documentOrder = normalizedDocuments.map((document) => document.id);
     const safeActiveDocumentId = documentOrder.includes(activeDocumentId ?? "")
       ? activeDocumentId
@@ -308,9 +345,9 @@ export class AppPersistenceService {
 
   private normalizeSettings(settings: Partial<AppSettings>): AppSettings {
     return {
-      provider: settings.provider === "aiServer" ? "aiServer" : "openrouter",
+      provider: settings.provider ?? (["192.168.2.10", "ai-server"].includes(window.location.hostname) ? "aiServer" : "openrouter"),
       apiKey: settings.apiKey ?? "",
-      aiServerUrl: settings.aiServerUrl ?? "http://192.168.2.10:8002/v1",
+      aiServerUrl: settings.aiServerUrl ?? (["192.168.2.10", "ai-server"].includes(window.location.hostname) ? "/v1" : "http://192.168.2.10:8002/v1"),
       model: settings.model ?? "",
       favoriteModelIds: Array.isArray(settings.favoriteModelIds)
         ? settings.favoriteModelIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
@@ -319,6 +356,11 @@ export class AppPersistenceService {
       temperature: settings.temperature ?? 0.9,
       topP: settings.topP ?? 1,
       systemPrompt: settings.systemPrompt ?? "",
+      savedSystemPrompts: Array.isArray(settings.savedSystemPrompts)
+        ? settings.savedSystemPrompts
+          .filter((entry) => typeof entry?.name === "string" && typeof entry?.prompt === "string" && entry.name.trim().length > 0)
+          .map((entry) => ({ name: entry.name.trim(), prompt: entry.prompt }))
+        : [],
     };
   }
 
@@ -390,8 +432,59 @@ export class AppPersistenceService {
       title: document.title,
       isTitleManual: document.isTitleManual,
       preview: previewTextFromContent(document.content),
+      folder: document.folder ?? "",
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
+    };
+  }
+
+  private async loadFromServer(): Promise<PersistedBootstrapState | null> {
+    try {
+      const response = await fetch("/app-state");
+      if (!response.ok) {
+        throw new Error(`Unable to load server state: ${response.status}`);
+      }
+
+      const state = await response.json() as { meta?: AppMetaState | null; documents?: Partial<StoredDocumentRecord>[] };
+      const documents = (state.documents ?? []).map((document) => this.normalizeDocument(document));
+      if (!state.meta) {
+        return null;
+      }
+
+      const normalized = this.createNormalizedState(
+        documents,
+        state.meta.activeDocumentId ?? null,
+        this.normalizeSettings(state.meta.settings),
+        state.meta.modelCache,
+      );
+      return this.createBootstrapState(normalized);
+    } catch (error) {
+      console.error("Unable to load server state.", error);
+      return null;
+    }
+  }
+
+  private async sendServerJson(path: string, method: "POST" | "PUT", body: unknown): Promise<void> {
+    const response = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(`Unable to save server state: ${response.status}`);
+    }
+  }
+
+  private normalizeDocument(document: Partial<StoredDocumentRecord>): StoredDocumentRecord {
+    const now = Date.now();
+    return {
+      id: document.id ?? crypto.randomUUID?.() ?? `${now}-${Math.random().toString(36).slice(2)}`,
+      title: document.title ?? "Untitled",
+      isTitleManual: document.isTitleManual ?? false,
+      content: normalizeStoredContent(document.content ?? ""),
+      folder: document.folder ?? "",
+      createdAt: document.createdAt ?? now,
+      updatedAt: document.updatedAt ?? now,
     };
   }
 

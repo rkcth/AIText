@@ -14,6 +14,7 @@ export interface DocumentRecord {
   title: string;
   isTitleManual: boolean;
   content: string;
+  folder: string;
   createdAt: number;
   updatedAt: number;
   undoStack: HistoryEntry[];
@@ -25,6 +26,7 @@ export interface StoredDocumentRecord {
   title: string;
   isTitleManual: boolean;
   content: string;
+  folder: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -34,11 +36,17 @@ export interface DocumentSummary {
   title: string;
   isTitleManual: boolean;
   preview: string;
+  folder: string;
   createdAt: number;
   updatedAt: number;
 }
 
 export type AiProvider = "openrouter" | "aiServer";
+
+export interface SavedSystemPrompt {
+  name: string;
+  prompt: string;
+}
 
 export interface AppSettings {
   provider: AiProvider;
@@ -50,6 +58,7 @@ export interface AppSettings {
   temperature: number;
   topP: number;
   systemPrompt: string;
+  savedSystemPrompts: SavedSystemPrompt[];
 }
 
 export interface ModelOption {
@@ -72,6 +81,7 @@ export interface GenerationState {
   baseContent: string;
   promptBase: string;
   insertedText: string;
+  reasoningText: string;
   error: string | null;
 }
 

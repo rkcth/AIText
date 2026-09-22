@@ -13,15 +13,17 @@ interface ModelsResponse {
 
 interface StreamHandlers {
   onText: (chunk: string) => void;
+  onReasoning: (chunk: string) => void;
 }
 
 @Injectable({ providedIn: "root" })
 export class OpenRouterService {
   private readonly openRouterUrl = "https://openrouter.ai/api/v1";
 
-  async fetchModels(settings: AppSettings): Promise<ModelOption[]> {
-    const response = await fetch(`${this.baseUrl(settings)}/models`, {
+  async fetchModels(settings: AppSettings, signal?: AbortSignal): Promise<ModelOption[]> {
+    const response = await this.fetchOrExplain(`${this.baseUrl(settings)}/models`, settings, {
       headers: this.headers(settings),
+      signal,
     });
     if (!response.ok) {
       throw new Error(`Unable to fetch models (${response.status}).`);
@@ -50,6 +52,7 @@ export class OpenRouterService {
     documentText: string,
     signal: AbortSignal,
     handlers: StreamHandlers,
+    reasoningContext = "",
   ): Promise<void> {
     const messages = [];
     if (settings.systemPrompt.trim()) {
@@ -59,17 +62,29 @@ export class OpenRouterService {
       });
     }
 
+    if (reasoningContext.trim()) {
+      messages.push({
+        role: "system",
+        content: [
+          "Previous reasoning notes, edited by the user.",
+          "Use them as ordinary context only; correct them if the document implies they are wrong.",
+          reasoningContext.trim(),
+        ].join("\n"),
+      });
+    }
+
     messages.push({
       role: "user",
       content: [
         "Continue the following text from exactly where it ends.",
+        `Write a substantial continuation, aiming for roughly ${settings.maxTokens} tokens unless the text clearly ends.`,
         "Return only the continuation with no commentary or framing.",
         "",
         documentText,
-      ].join("\n"),
+      ].filter(Boolean).join("\n"),
     });
 
-    const response = await fetch(`${this.baseUrl(settings)}/chat/completions`, {
+    const response = await this.fetchOrExplain(`${this.baseUrl(settings)}/chat/completions`, settings, {
       method: "POST",
       signal,
       headers: this.headers(settings, true),
@@ -80,6 +95,7 @@ export class OpenRouterService {
         top_p: settings.topP,
         stream: true,
         messages,
+        ...(settings.provider === "aiServer" ? { chat_template_kwargs: { enable_thinking: true } } : {}),
       }),
     });
 
@@ -124,11 +140,18 @@ export class OpenRouterService {
             choices?: Array<{
               delta?: {
                 content?: string;
+                reasoning?: string;
+                reasoning_content?: string;
               };
             }>;
           };
 
-          const chunk = json.choices?.[0]?.delta?.content ?? "";
+          const delta = json.choices?.[0]?.delta;
+          const reasoning = delta?.reasoning_content ?? delta?.reasoning ?? "";
+          const chunk = delta?.content ?? "";
+          if (reasoning) {
+            handlers.onReasoning(reasoning);
+          }
           if (chunk) {
             handlers.onText(chunk);
           }
@@ -141,6 +164,28 @@ export class OpenRouterService {
     return (settings.provider === "aiServer" ? settings.aiServerUrl : this.openRouterUrl)
       .trim()
       .replace(/\/$/, "");
+  }
+
+  private async fetchOrExplain(
+    url: string,
+    settings: AppSettings,
+    init: RequestInit,
+  ): Promise<Response> {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      if (
+        settings.provider === "aiServer" &&
+        window.location.protocol === "https:" &&
+        url.startsWith("http://")
+      ) {
+        throw new Error(
+          "The browser blocked the AI server because AIText is loaded over HTTPS but the AI server URL is HTTP. Open AIText over http://localhost, or expose the AI server with HTTPS.",
+        );
+      }
+
+      throw error;
+    }
   }
 
   private headers(settings: AppSettings, json = false): Record<string, string> {

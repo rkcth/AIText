@@ -142,6 +142,34 @@ export class RichTextEditorComponent
     return this.editorInstance?.getText({ blockSeparator: "\n\n" }).trim() ?? "";
   }
 
+  getSelectedMarkdown(): { from: number; to: number; text: string } | null {
+    const editor = this.editorInstance;
+    if (!editor) return null;
+
+    const { from, to, empty } = editor.state.selection;
+    if (empty) return null;
+
+    return { from, to, text: this.markdownFromRange(from, to).trim() };
+  }
+
+  replaceRangeWithMarkdown(from: number, to: number, markdown: string): boolean {
+    if (this.disabled || !markdown.trim()) return false;
+    return this.editorInstance
+      ?.chain()
+      .focus()
+      .insertContentAt({ from, to }, markdown.trim(), { contentType: "markdown" })
+      .run() ?? false;
+  }
+
+  insertMarkdownAtEnd(markdown: string): boolean {
+    if (this.disabled || !markdown.trim()) return false;
+    return this.editorInstance
+      ?.chain()
+      .focus("end")
+      .insertContent(`\n\n${markdown.trim()}`, { contentType: "markdown" })
+      .run() ?? false;
+  }
+
   isActive(name: string, attributes?: Record<string, unknown>): boolean {
     return this.editorInstance?.isActive(name, attributes) ?? false;
   }
@@ -174,21 +202,27 @@ export class RichTextEditorComponent
     this.editorInstance?.chain().focus().setHorizontalRule().run();
   }
 
+  insertAiInstructions(): void {
+    if (this.disabled) {
+      return;
+    }
+
+    this.editorInstance
+      ?.chain()
+      .focus()
+      .insertContent("\n\n:::ai-instructions\nTell the AI what to do next.\n:::\n\n", {
+        contentType: "markdown",
+      })
+      .run();
+  }
+
   focusEnd(): void {
     this.editorInstance?.chain().focus("end").run();
   }
 
-  private handleClipboardCopy(event: Event, isCut: boolean): boolean {
-    const clipboardEvent = event as ClipboardEvent;
+  private markdownFromRange(from: number, to: number): string {
     const editor = this.editorInstance;
-    if (!clipboardEvent.clipboardData || !editor) {
-      return false;
-    }
-
-    const { from, to, empty } = editor.state.selection;
-    if (empty) {
-      return false;
-    }
+    if (!editor) return "";
 
     const slice = editor.state.doc.slice(from, to);
     const temporaryEditor = new Editor({
@@ -209,6 +243,22 @@ export class RichTextEditorComponent
 
     const markdown = temporaryEditor.getMarkdown();
     temporaryEditor.destroy();
+    return markdown;
+  }
+
+  private handleClipboardCopy(event: Event, isCut: boolean): boolean {
+    const clipboardEvent = event as ClipboardEvent;
+    const editor = this.editorInstance;
+    if (!clipboardEvent.clipboardData || !editor) {
+      return false;
+    }
+
+    const { from, to, empty } = editor.state.selection;
+    if (empty) {
+      return false;
+    }
+
+    const markdown = this.markdownFromRange(from, to);
 
     clipboardEvent.preventDefault();
     clipboardEvent.clipboardData.setData("text/plain", markdown);

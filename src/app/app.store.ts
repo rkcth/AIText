@@ -23,6 +23,7 @@ import {
   previewTextFromContent,
 } from "./content-utils";
 import { AppPersistenceService } from "./app.persistence";
+import { ModelRefreshOwner, runOwnedModelRefresh } from "./model-refresh-owner";
 import { OpenRouterService } from "./openrouter.service";
 
 type SettingKey = keyof AppSettings;
@@ -30,10 +31,15 @@ type SettingKey = keyof AppSettings;
 const USER_HISTORY_DEBOUNCE_MS = 900;
 const SAVE_DEBOUNCE_MS = 500;
 
+const isAiServerHost = (): boolean => ["192.168.2.10", "ai-server"].includes(window.location.hostname);
+
+const defaultAiServerUrl = (): string =>
+  isAiServerHost() ? "/v1" : "http://192.168.2.10:8002/v1";
+
 const defaultSettings = (): AppSettings => ({
-  provider: "openrouter",
+  provider: isAiServerHost() ? "aiServer" : "openrouter",
   apiKey: "",
-  aiServerUrl: "http://192.168.2.10:8002/v1",
+  aiServerUrl: defaultAiServerUrl(),
   model: "",
   favoriteModelIds: [],
   maxTokens: 256,
@@ -48,6 +54,7 @@ const defaultSettings = (): AppSettings => ({
     "Do not repeat large portions of the existing text.",
     "Output only the continuation text.",
   ].join("\n"),
+  savedSystemPrompts: [],
 });
 
 const defaultGeneration = (): GenerationState => ({
@@ -56,14 +63,19 @@ const defaultGeneration = (): GenerationState => ({
   baseContent: EMPTY_DOCUMENT_MARKDOWN,
   promptBase: "",
   insertedText: "",
+  reasoningText: "",
   error: null,
 });
 
-const createDocument = (index: number): DocumentRecord => ({
-  id: crypto.randomUUID(),
+const createId = (): string =>
+  crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const createDocument = (index: number, folder = ""): DocumentRecord => ({
+  id: createId(),
   title: `Untitled ${index}`,
   isTitleManual: false,
   content: EMPTY_DOCUMENT_MARKDOWN,
+  folder,
   createdAt: Date.now(),
   updatedAt: Date.now(),
   undoStack: [],
@@ -89,10 +101,12 @@ export class AppStore {
     | null = null;
   private pendingUserTimer: ReturnType<typeof setTimeout> | null = null;
   private activeAbortController: AbortController | null = null;
+  private readonly modelRefreshOwner = new ModelRefreshOwner<AppSettings>();
   private readonly isHydrated = signal(false);
   private readonly activeDocumentState = signal<DocumentRecord | null>(null);
 
   readonly documents = signal<DocumentSummary[]>([]);
+  readonly activeFolder = signal<string>("");
   readonly activeDocumentId = signal<string | null>(null);
   readonly settings = signal<AppSettings>(defaultSettings());
   readonly modelCache = signal<ModelCacheState>({
@@ -105,6 +119,11 @@ export class AppStore {
   readonly saveState = signal<"saved" | "saving">("saved");
 
   readonly activeDocument = computed(() => this.activeDocumentState());
+  readonly folders = computed(() => [...new Set([...this.documents().map((document) => document.folder), this.activeFolder()].filter(Boolean))].sort((a, b) => a.localeCompare(b)));
+  readonly visibleDocuments = computed(() => {
+    const folder = this.activeFolder();
+    return folder ? this.documents().filter((document) => document.folder === folder) : this.documents();
+  });
 
   readonly canUndo = computed(() => {
     const document = this.activeDocument();
@@ -161,7 +180,7 @@ export class AppStore {
 
   createNewDocument(): void {
     this.flushPendingUserHistory();
-    const nextDocument = createDocument(this.documents().length + 1);
+    const nextDocument = createDocument(this.documents().length + 1, this.activeFolder());
 
     this.documents.update((documents) => [this.toSummary(nextDocument), ...documents]);
     this.activeDocumentState.set(nextDocument);
@@ -195,6 +214,25 @@ export class AppStore {
       ...document,
       title,
       isTitleManual: title.trim().length > 0,
+      updatedAt: Date.now(),
+    }));
+  }
+
+  setActiveFolder(folder: string): void {
+    this.activeFolder.set(folder);
+  }
+
+  createFolder(folder: string): void {
+    const trimmed = folder.trim();
+    if (trimmed) {
+      this.activeFolder.set(trimmed);
+    }
+  }
+
+  moveDocument(documentId: string, folder: string): void {
+    this.updateDocument(documentId, (document) => ({
+      ...document,
+      folder: folder.trim(),
       updatedAt: Date.now(),
     }));
   }
@@ -332,6 +370,7 @@ export class AppStore {
   }
 
   updateSetting<K extends SettingKey>(key: K, value: AppSettings[K]): void {
+    if (key === "provider" || key === "apiKey" || key === "aiServerUrl") this.cancelModelRefresh();
     this.settings.update((settings) => ({
       ...settings,
       [key]:
@@ -364,39 +403,80 @@ export class AppStore {
     });
   }
 
-  async refreshModels(): Promise<void> {
-    this.modelCache.update((state) => ({
-      ...state,
-      isLoading: true,
-      error: null,
+  saveSystemPrompt(name: string): void {
+    const trimmedName = name.trim();
+    const prompt = this.settings().systemPrompt.trim();
+    if (!trimmedName || !prompt) {
+      return;
+    }
+
+    this.settings.update((settings) => ({
+      ...settings,
+      savedSystemPrompts: [
+        { name: trimmedName, prompt },
+        ...settings.savedSystemPrompts.filter((entry) => entry.name !== trimmedName),
+      ],
     }));
+  }
 
-    try {
-      const items = await this.openRouter.fetchModels(this.settings());
-      this.modelCache.set({
-        items,
-        fetchedAt: Date.now(),
-        isLoading: false,
+  applySystemPrompt(name: string): void {
+    const prompt = this.settings().savedSystemPrompts.find((entry) => entry.name === name)?.prompt;
+    if (prompt !== undefined) {
+      this.updateSetting("systemPrompt", prompt);
+    }
+  }
+
+  deleteSystemPrompt(name: string): void {
+    this.settings.update((settings) => ({
+      ...settings,
+      savedSystemPrompts: settings.savedSystemPrompts.filter((entry) => entry.name !== name),
+    }));
+  }
+
+  cancelModelRefresh(): void {
+    this.modelRefreshOwner.cancel();
+    this.modelCache.update((state) => ({ ...state, isLoading: false }));
+  }
+
+  async refreshModels(signal?: AbortSignal): Promise<void> {
+    await runOwnedModelRefresh({
+      owner: this.modelRefreshOwner,
+      settings: this.settings(),
+      signal,
+      getSettings: () => this.settings(),
+      fetchItems: (settings, fetchSignal) => this.openRouter.fetchModels(settings, fetchSignal),
+      onStart: () => this.modelCache.update((state) => ({
+        ...state,
+        isLoading: true,
         error: null,
-      });
+      })),
+      onSuccess: (items) => {
+        this.modelCache.set({
+          items,
+          fetchedAt: Date.now(),
+          isLoading: false,
+          error: null,
+        });
 
-      const selectedModel = this.settings().model.trim();
-      if (!selectedModel && items[0]) {
-        this.updateSetting("model", items[0].id);
-      }
-    } catch (error) {
-      this.modelCache.update((state) => ({
+        const selectedModel = this.settings().model.trim();
+        const selectedExists = items.some((item) => item.id === selectedModel);
+        if ((!selectedModel || (this.settings().provider === "aiServer" && !selectedExists)) && items[0]) {
+          this.updateSetting("model", items[0].id);
+        }
+      },
+      onError: (error) => this.modelCache.update((state) => ({
         ...state,
         isLoading: false,
         error: this.toErrorMessage(error),
-      }));
-    }
+      })),
+      onAbortCurrent: () => this.modelCache.update((state) => ({ ...state, isLoading: false })),
+    });
   }
 
   async generateCompletion(promptBaseOverride?: string, htmlBaseOverride?: string): Promise<void> {
     this.flushPendingUserHistory();
     const activeDocument = this.activeDocument();
-    const settings = this.settings();
+    let settings = this.settings();
 
     if (!activeDocument || this.isStreaming()) {
       return;
@@ -422,18 +502,26 @@ export class AppStore {
       return;
     }
 
+    if (settings.provider === "aiServer") {
+      await this.refreshModels();
+      settings = this.settings();
+    }
+
     if (!settings.model.trim()) {
       this.generation.set({
         ...defaultGeneration(),
         status: "error",
         documentId: activeDocument.id,
-        error: "Choose a model before requesting a completion.",
+        error: settings.provider === "aiServer"
+          ? "The AI server did not report a running model."
+          : "Choose a model before requesting a completion.",
       });
       return;
     }
 
     const baseContent = htmlBaseOverride ?? activeDocument.content;
     const promptBase = promptBaseOverride?.trim() || markdownToPlainText(baseContent);
+    const reasoningContext = this.generation().reasoningText.trim();
     const controller = new AbortController();
     this.activeAbortController = controller;
     this.generation.set({
@@ -442,6 +530,7 @@ export class AppStore {
       baseContent,
       promptBase,
       insertedText: "",
+      reasoningText: "",
       error: null,
     });
 
@@ -452,7 +541,9 @@ export class AppStore {
         controller.signal,
         {
           onText: (chunk) => this.appendGeneratedText(activeDocument.id, baseContent, chunk),
+          onReasoning: (chunk) => this.appendReasoningText(chunk),
         },
+        reasoningContext,
       );
       this.finishGeneration("idle");
     } catch (error) {
@@ -471,6 +562,24 @@ export class AppStore {
 
   isStreaming(): boolean {
     return this.generation().status === "streaming";
+  }
+
+  updateReasoningText(reasoningText: string): void {
+    this.generation.update((state) => ({
+      ...state,
+      reasoningText,
+    }));
+  }
+
+  clearReasoningText(): void {
+    this.updateReasoningText("");
+  }
+
+  private appendReasoningText(chunk: string): void {
+    this.generation.update((state) => ({
+      ...state,
+      reasoningText: `${state.reasoningText}${chunk}`,
+    }));
   }
 
   private appendGeneratedText(documentId: string, baseContent: string, chunk: string): void {
@@ -517,6 +626,7 @@ export class AppStore {
       baseContent: state.baseContent,
       promptBase: state.promptBase,
       insertedText: state.insertedText,
+      reasoningText: state.reasoningText,
       error: errorMessage,
     });
   }
@@ -790,6 +900,7 @@ export class AppStore {
       title: document.title,
       isTitleManual: document.isTitleManual,
       content: normalizeStoredContent(document.content),
+      folder: document.folder ?? "",
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
       undoStack: [],
@@ -803,17 +914,19 @@ export class AppStore {
       title: document.title,
       isTitleManual: document.isTitleManual,
       content: normalizeStoredContent(document.content),
+      folder: document.folder,
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
     };
   }
 
-  private toSummary(document: Pick<DocumentRecord, "id" | "title" | "isTitleManual" | "content" | "createdAt" | "updatedAt">): DocumentSummary {
+  private toSummary(document: Pick<DocumentRecord, "id" | "title" | "isTitleManual" | "content" | "folder" | "createdAt" | "updatedAt">): DocumentSummary {
     return {
       id: document.id,
       title: document.title,
       isTitleManual: document.isTitleManual,
       preview: previewTextFromContent(document.content),
+      folder: document.folder ?? "",
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
     };

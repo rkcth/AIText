@@ -15,8 +15,16 @@
       {{ store.saveState() === "saving" ? "Saving..." : "Saved" }}
     </p>
 
+    <div class="folder-list">
+      <button type="button" [class.active]="!activeFolder()" (click)="store.setActiveFolder('')">All</button>
+      @for (folder of folders(); track folder) {
+        <button type="button" [class.active]="activeFolder() === folder" (click)="store.setActiveFolder(folder)">{{ folder }}</button>
+      }
+      <button type="button" class="ghost" (click)="createFolder()">+ Folder</button>
+    </div>
+
     <div class="document-list">
-      @for (document of store.documents(); track document.id) {
+      @for (document of store.visibleDocuments(); track document.id) {
         <button
           type="button"
           class="document-card"
@@ -47,6 +55,17 @@
             <p class="meta">
               {{ generation().status === "streaming" ? "Streaming completion..." : "Ready" }}
             </p>
+            <select
+              class="folder-select"
+              [ngModel]="document.folder"
+              (ngModelChange)="store.moveDocument(document.id, $event)"
+              aria-label="Document folder"
+            >
+              <option value="">No folder</option>
+              @for (folder of folders(); track folder) {
+                <option [value]="folder">{{ folder }}</option>
+              }
+            </select>
           </div>
 
           <div class="action-row">
@@ -118,6 +137,23 @@
           </p>
         </div>
 
+        @if (generation().reasoningText) {
+          <section class="thinking-panel" aria-label="AI thinking">
+            <div class="thinking-header">
+              <span>Thinking</span>
+              <button type="button" class="danger" (click)="store.clearReasoningText()">
+                Delete thinking
+              </button>
+            </div>
+            <textarea
+              rows="6"
+              [ngModel]="generation().reasoningText"
+              (ngModelChange)="store.updateReasoningText($event)"
+              placeholder="AI thinking appears here. Edit it, then start completion again to send it back as context."
+            ></textarea>
+          </section>
+        }
+
         @if (generation().error) {
           <p class="status error">{{ generation().error }}</p>
         } @else if (generation().status === "stopped") {
@@ -152,10 +188,10 @@
       <label class="field">
         <span>AI Server URL</span>
         <input
-          type="url"
+          type="text"
           [ngModel]="settings().aiServerUrl"
           (ngModelChange)="store.updateSetting('aiServerUrl', $event)"
-          placeholder="http://192.168.2.10:8002/v1"
+          placeholder="/v1"
         />
       </label>
     } @else {
@@ -171,154 +207,118 @@
     }
 
     <label class="field">
-      <span class="field-header">
-        <span>Model</span>
-        <button
-          type="button"
-          class="icon-button"
-          [disabled]="modelCache().isLoading"
-          [attr.aria-label]="modelCache().isLoading ? 'Refreshing models' : 'Refresh models'"
-          [title]="modelCache().isLoading ? 'Refreshing models' : 'Refresh models'"
-          (click)="refreshModels()"
-        >
-          <app-icon
-            name="refresh-cw"
-            class="lucide-icon"
-            [class.spinning]="modelCache().isLoading"
-            [size]="16"
-            [strokeWidth]="2"
-          ></app-icon>
-        </button>
-      </span>
-
-      <div
-        class="model-picker"
-        ngCombobox
-        filterMode="manual"
-        [firstMatch]="firstMatchingModelId()"
-      >
-        <div class="model-picker-input-wrap">
-          <input
-            ngComboboxInput
-            class="model-picker-input"
-            placeholder="Search models by name or id"
-            [value]="modelInputValue()"
-            (valueChange)="modelQuery.set($event)"
-            (focus)="onModelQueryFocus()"
-            (blur)="onModelQueryBlur()"
-          />
-
+        <span class="field-header">
+          <span>Model</span>
           <button
             type="button"
-            class="model-picker-toggle"
-            aria-label="Show all models"
-            title="Show all models"
-            (mousedown)="preventModelOptionDefault($event)"
-            (click)="openModelPicker($event)"
+            class="icon-button"
+            [disabled]="modelCache().isLoading"
+            [attr.aria-label]="modelCache().isLoading ? 'Refreshing models' : 'Refresh models'"
+            [title]="modelCache().isLoading ? 'Refreshing models' : 'Refresh models'"
+            (click)="refreshModels()"
           >
-            <span class="model-picker-caret" aria-hidden="true"></span>
+            <app-icon
+              name="refresh-cw"
+              class="lucide-icon"
+              [class.spinning]="modelCache().isLoading"
+              [size]="16"
+              [strokeWidth]="2"
+            ></app-icon>
           </button>
-        </div>
+        </span>
 
-        <ng-template ngComboboxPopupContainer>
-          <div
-            class="model-picker-popup"
-            ngComboboxPopup
-            ngListbox
-            [values]="selectedModelValues()"
-            (valuesChange)="onModelSelectionChange($event)"
-          >
-            @if (!hasModelMatches()) {
-              <div class="model-empty-state">No matching models found.</div>
-            } @else {
-              @for (model of filteredFavoriteModels(); track model.id) {
-                <div
-                  class="model-option"
-                  ngOption
-                  [value]="model.id"
-                  [label]="modelLabel(model)"
-                >
-                  <button
-                    type="button"
-                    class="favorite-toggle"
-                    [class.active]="isFavoriteModel(model.id)"
-                    [attr.aria-label]="
-                      isFavoriteModel(model.id)
-                        ? 'Remove ' + model.name + ' from favorites'
-                        : 'Add ' + model.name + ' to favorites'
-                    "
-                    [title]="
-                      isFavoriteModel(model.id)
-                        ? 'Remove from favorites'
-                        : 'Add to favorites'
-                    "
-                    (mousedown)="preventModelOptionDefault($event)"
-                    (click)="toggleFavoriteModel(model.id, $event)"
-                  >
-                    <app-icon
-                      name="star"
-                      [size]="16"
-                      [strokeWidth]="2"
-                      [filled]="isFavoriteModel(model.id)"
-                    ></app-icon>
-                  </button>
+        <div
+          class="model-picker"
+          ngCombobox
+          filterMode="manual"
+          [firstMatch]="firstMatchingModelId()"
+        >
+          <div class="model-picker-input-wrap">
+            <input
+              ngComboboxInput
+              class="model-picker-input"
+              placeholder="Search models by name or id"
+              [value]="modelInputValue()"
+              (valueChange)="modelQuery.set($event)"
+              (focus)="onModelQueryFocus()"
+              (blur)="onModelQueryBlur()"
+            />
 
-                  <div class="model-option-text">
-                    <span class="model-option-name">{{ model.name }}</span>
-                    <span class="model-option-id">{{ model.id }}</span>
-                  </div>
-                </div>
-              }
-
-              @if (filteredFavoriteModels().length > 0 && filteredAllModels().length > 0) {
-                <div class="model-separator" role="separator" aria-hidden="true"></div>
-              }
-
-              @for (model of filteredAllModels(); track model.id) {
-                <div
-                  class="model-option"
-                  ngOption
-                  [value]="model.id"
-                  [label]="modelLabel(model)"
-                >
-                  <button
-                    type="button"
-                    class="favorite-toggle"
-                    [class.active]="isFavoriteModel(model.id)"
-                    [attr.aria-label]="
-                      isFavoriteModel(model.id)
-                        ? 'Remove ' + model.name + ' from favorites'
-                        : 'Add ' + model.name + ' to favorites'
-                    "
-                    [title]="
-                      isFavoriteModel(model.id)
-                        ? 'Remove from favorites'
-                        : 'Add to favorites'
-                    "
-                    (mousedown)="preventModelOptionDefault($event)"
-                    (click)="toggleFavoriteModel(model.id, $event)"
-                  >
-                    <app-icon
-                      name="star"
-                      [size]="16"
-                      [strokeWidth]="2"
-                      [filled]="isFavoriteModel(model.id)"
-                    ></app-icon>
-                  </button>
-
-                  <div class="model-option-text">
-                    <span class="model-option-name">{{ model.name }}</span>
-                    <span class="model-option-id">{{ model.id }}</span>
-                  </div>
-                </div>
-              }
-            }
+            <button
+              type="button"
+              class="model-picker-toggle"
+              aria-label="Show all models"
+              title="Show all models"
+              (mousedown)="preventModelOptionDefault($event)"
+              (click)="openModelPicker($event)"
+            >
+              <span class="model-picker-caret" aria-hidden="true"></span>
+            </button>
           </div>
-        </ng-template>
-      </div>
+
+          <ng-template ngComboboxPopupContainer>
+            <div
+              class="model-picker-popup"
+              ngComboboxPopup
+              ngListbox
+              [values]="selectedModelValues()"
+              (valuesChange)="onModelSelectionChange($event)"
+            >
+              @if (!hasModelMatches()) {
+                <div class="model-empty-state">No matching models found.</div>
+              } @else {
+                @for (model of filteredFavoriteModels(); track model.id) {
+                  <div class="model-option" ngOption [value]="model.id" [label]="modelLabel(model)">
+                    <button
+                      type="button"
+                      class="favorite-toggle"
+                      [class.active]="isFavoriteModel(model.id)"
+                      [attr.aria-label]="isFavoriteModel(model.id) ? 'Remove ' + model.name + ' from favorites' : 'Add ' + model.name + ' to favorites'"
+                      [title]="isFavoriteModel(model.id) ? 'Remove from favorites' : 'Add to favorites'"
+                      (mousedown)="preventModelOptionDefault($event)"
+                      (click)="toggleFavoriteModel(model.id, $event)"
+                    >
+                      <app-icon name="star" [size]="16" [strokeWidth]="2" [filled]="isFavoriteModel(model.id)"></app-icon>
+                    </button>
+
+                    <div class="model-option-text">
+                      <span class="model-option-name">{{ model.name }}</span>
+                      <span class="model-option-id">{{ model.id }}</span>
+                    </div>
+                  </div>
+                }
+
+                @if (filteredFavoriteModels().length > 0 && filteredAllModels().length > 0) {
+                  <div class="model-separator" role="separator" aria-hidden="true"></div>
+                }
+
+                @for (model of filteredAllModels(); track model.id) {
+                  <div class="model-option" ngOption [value]="model.id" [label]="modelLabel(model)">
+                    <button
+                      type="button"
+                      class="favorite-toggle"
+                      [class.active]="isFavoriteModel(model.id)"
+                      [attr.aria-label]="isFavoriteModel(model.id) ? 'Remove ' + model.name + ' from favorites' : 'Add ' + model.name + ' to favorites'"
+                      [title]="isFavoriteModel(model.id) ? 'Remove from favorites' : 'Add to favorites'"
+                      (mousedown)="preventModelOptionDefault($event)"
+                      (click)="toggleFavoriteModel(model.id, $event)"
+                    >
+                      <app-icon name="star" [size]="16" [strokeWidth]="2" [filled]="isFavoriteModel(model.id)"></app-icon>
+                    </button>
+
+                    <div class="model-option-text">
+                      <span class="model-option-name">{{ model.name }}</span>
+                      <span class="model-option-id">{{ model.id }}</span>
+                    </div>
+                  </div>
+                }
+              }
+            </div>
+          </ng-template>
+        </div>
     </label>
 
-    @if (store.selectedModelMissing()) {
+    @if (settings().provider === 'openrouter' && store.selectedModelMissing()) {
       <p class="status warning">
         The selected model is not in the current cache. It will still stay selected until you change it.
       </p>
@@ -361,15 +361,36 @@
       </label>
     </div>
 
-    <label class="field grow">
+    <div class="field grow">
       <span>System Prompt</span>
+
+      <div class="prompt-controls">
+        <select
+          [ngModel]="selectedSystemPromptName()"
+          (ngModelChange)="applySystemPrompt($event)"
+          aria-label="Saved system prompts"
+        >
+          <option value="">Saved prompts</option>
+          @for (prompt of settings().savedSystemPrompts; track prompt.name) {
+            <option [value]="prompt.name">{{ prompt.name }}</option>
+          }
+        </select>
+
+        <button type="button" (click)="saveSystemPrompt()" [disabled]="!settings().systemPrompt.trim()">
+          Save
+        </button>
+        <button type="button" class="danger" (click)="deleteSelectedSystemPrompt()" [disabled]="!selectedSystemPromptName()">
+          Delete
+        </button>
+      </div>
+
       <textarea
         rows="10"
         [ngModel]="settings().systemPrompt"
         (ngModelChange)="store.updateSetting('systemPrompt', $event)"
         placeholder="Optional system prompt to guide continuations."
       ></textarea>
-    </label>
+    </div>
 
     <div class="cache-meta">
       <p class="meta">
@@ -389,3 +410,78 @@
     }
   </aside>
 </div>
+
+@if (chatOpen()) {
+  <section
+    class="floating-chat"
+    [style.left.px]="chatPosition().x"
+    [style.top.px]="chatPosition().y"
+    aria-label="AI chat"
+  >
+    <header class="chat-titlebar" (pointerdown)="startChatDrag($event)">
+      <strong>Coauthor</strong>
+      <button type="button" aria-label="Minimize coauthor" title="Minimize" (click)="minimizeChat()">−</button>
+    </header>
+
+    <div class="chat-body">
+      <p class="meta">Select text to rewrite/discuss, or continue from the end. Drafts do not touch the manuscript until you apply them.</p>
+
+      @if (coauthorProposal(); as proposal) {
+        <section class="coauthor-card">
+          <span>{{ proposal.action === 'rewrite' ? 'Rewrite proposal' : proposal.action === 'continue' ? 'Continuation proposal' : 'Coauthor notes' }}</span>
+          @if (proposal.original) {
+            <details>
+              <summary>Original selection</summary>
+              <p>{{ proposal.original }}</p>
+            </details>
+          }
+          <p>{{ proposal.content || '…' }}</p>
+          <div class="coauthor-actions">
+            @if (proposal.action !== 'discuss') {
+              <button type="button" class="primary" [disabled]="chatStreaming() || store.isStreaming() || proposal.status !== 'complete' || !proposal.content.trim()" (click)="applyCoauthorProposal()">Apply</button>
+            }
+            <button type="button" [disabled]="chatStreaming()" (click)="reviseCoauthorProposal()">Revise</button>
+            <button type="button" class="danger" [disabled]="chatStreaming()" (click)="discardCoauthorProposal()">Discard</button>
+          </div>
+        </section>
+      }
+
+      @if (chatError()) {
+        <p class="status error">{{ chatError() }}</p>
+      }
+    </div>
+
+    <footer class="chat-compose coauthor-compose">
+      <textarea
+        rows="3"
+        [(ngModel)]="chatInput"
+        [disabled]="chatStreaming()"
+        placeholder="Optional direction: less dramatic, more intimate, keep the final sentence…"
+        (keydown.enter)="handleChatKey($event)"
+      ></textarea>
+      <div class="coauthor-buttons">
+        <button type="button" (click)="askCoauthor('continue')" [disabled]="chatStreaming()">Continue</button>
+        <button type="button" (click)="askCoauthor('rewrite')" [disabled]="chatStreaming()">Rewrite selection</button>
+        <button type="button" (click)="askCoauthor('discuss')" [disabled]="chatStreaming()">Discuss selection</button>
+        <button
+          type="button"
+          class="chat-send-button"
+          [attr.aria-label]="chatStreaming() ? 'Stop coauthor' : 'Continue story'"
+          [title]="chatStreaming() ? 'Stop coauthor' : 'Continue story'"
+          (click)="chatStreaming() ? stopChat() : askCoauthor('continue')"
+          [disabled]="!chatStreaming() && !activeDocument()"
+        >
+          <app-icon
+            [name]="chatStreaming() ? 'square' : 'play'"
+            [size]="18"
+            [strokeWidth]="2.25"
+          ></app-icon>
+        </button>
+      </div>
+    </footer>
+  </section>
+} @else {
+  <button type="button" class="chat-launcher" aria-label="Open coauthor" title="Open coauthor" (click)="openChat()">
+    <span class="chat-launcher-bubble" aria-hidden="true"></span>
+  </button>
+}
