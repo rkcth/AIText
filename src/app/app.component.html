@@ -372,6 +372,17 @@
       </label>
     </div>
 
+    @if (settings().provider === 'aiServer') {
+      <label class="thinking-toggle">
+        <input
+          type="checkbox"
+          [ngModel]="settings().disableThinking"
+          (ngModelChange)="store.updateSetting('disableThinking', $event)"
+        />
+        <span>Disable thinking</span>
+      </label>
+    }
+
     <div class="field grow">
       <span>System Prompt</span>
 

@@ -337,6 +337,20 @@ h2 {
   gap: 12px;
 }
 
+.thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.thinking-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .prompt-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;

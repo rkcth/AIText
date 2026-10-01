@@ -57,6 +57,7 @@ export interface AppSettings {
   maxTokens: number;
   temperature: number;
   topP: number;
+  disableThinking: boolean;
   systemPrompt: string;
   savedSystemPrompts: SavedSystemPrompt[];
 }

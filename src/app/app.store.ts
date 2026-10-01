@@ -45,6 +45,7 @@ const defaultSettings = (): AppSettings => ({
   maxTokens: 256,
   temperature: 0.9,
   topP: 1,
+  disableThinking: false,
   systemPrompt: [
     "You are a continuation engine for a local text editor.",
     "",

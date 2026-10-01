@@ -95,7 +95,7 @@ export class OpenRouterService {
         top_p: settings.topP,
         stream: true,
         messages,
-        ...(settings.provider === "aiServer" ? { chat_template_kwargs: { enable_thinking: true } } : {}),
+        ...(settings.provider === "aiServer" ? { chat_template_kwargs: { enable_thinking: !settings.disableThinking } } : {}),
       }),
     });
 

@@ -355,6 +355,7 @@ export class AppPersistenceService {
       maxTokens: settings.maxTokens ?? 256,
       temperature: settings.temperature ?? 0.9,
       topP: settings.topP ?? 1,
+      disableThinking: settings.disableThinking === true,
       systemPrompt: settings.systemPrompt ?? "",
       savedSystemPrompts: Array.isArray(settings.savedSystemPrompts)
         ? settings.savedSystemPrompts

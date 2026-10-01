@@ -584,7 +584,7 @@ export class AppComponent {
           ...(previousDraft ? [{ role: "user", content: `Previous draft to revise:\n${previousDraft}` }] : []),
           { role: "user", content: [task, previousDraft ? "Revise the previous draft using the author note." : "", instruction ? `Author note: ${instruction}` : ""].filter(Boolean).join("\n") },
         ],
-        ...(settings.provider === "aiServer" ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+        ...(settings.provider === "aiServer" ? { chat_template_kwargs: { enable_thinking: !settings.disableThinking } } : {}),
       }),
     });
 
@@ -640,7 +640,7 @@ export class AppComponent {
           ...prior.slice(-8).map((message) => ({ role: message.role, content: message.content })),
           { role: "user", content: question },
         ],
-        ...(settings.provider === "aiServer" ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+        ...(settings.provider === "aiServer" ? { chat_template_kwargs: { enable_thinking: !settings.disableThinking } } : {}),
       }),
     });
 
