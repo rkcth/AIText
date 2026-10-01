@@ -458,11 +458,6 @@ export class AppStore {
           error: null,
         });
 
-        const selectedModel = this.settings().model.trim();
-        const selectedExists = items.some((item) => item.id === selectedModel);
-        if ((!selectedModel || (this.settings().provider === "aiServer" && !selectedExists)) && items[0]) {
-          this.updateSetting("model", items[0].id);
-        }
       },
       onError: (error) => this.modelCache.update((state) => ({
         ...state,
@@ -507,14 +502,12 @@ export class AppStore {
       settings = this.settings();
     }
 
-    if (!settings.model.trim()) {
+    if (settings.provider !== "aiServer" && !settings.model.trim()) {
       this.generation.set({
         ...defaultGeneration(),
         status: "error",
         documentId: activeDocument.id,
-        error: settings.provider === "aiServer"
-          ? "The AI server did not report a running model."
-          : "Choose a model before requesting a completion.",
+        error: "Choose a model before requesting a completion.",
       });
       return;
     }

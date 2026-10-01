@@ -206,7 +206,7 @@ export class AppComponent {
   onModelSelectionChange(modelIds: string[]): void {
     const selectedId = modelIds.at(-1)?.trim() ?? "";
     if (!selectedId) {
-      this.selectedModelValues.set([]);
+      this.clearModelSelection();
       return;
     }
 
@@ -214,6 +214,14 @@ export class AppComponent {
     this.selectedModelValues.set([selectedId]);
     this.modelPickerFocused.set(false);
     this.modelQuery.set("");
+    this.modelCombobox()?.close();
+  }
+
+  clearModelSelection(): void {
+    this.store.updateSetting("model", "");
+    this.selectedModelValues.set([]);
+    this.modelQuery.set("");
+    this.modelPickerFocused.set(false);
     this.modelCombobox()?.close();
   }
 
@@ -338,7 +346,7 @@ export class AppComponent {
         settings = this.settings();
       }
 
-      if (!settings.model.trim()) throw new Error("Choose a model first.");
+      if (settings.provider !== "aiServer" && !settings.model.trim()) throw new Error("Choose a model first.");
       if (this.chatAbortController !== controller || this.activeDocument()?.id !== document.id || this.activeDocument()?.content !== document.content) {
         throw new DOMException("Cancelled", "AbortError");
       }
@@ -421,7 +429,7 @@ export class AppComponent {
         settings = this.settings();
       }
 
-      if (!settings.model.trim()) throw new Error("Choose a model first.");
+      if (settings.provider !== "aiServer" && !settings.model.trim()) throw new Error("Choose a model first.");
       const current = this.coauthorProposal();
       const activeDocument = this.activeDocument();
       if (this.chatAbortController !== controller || current?.id !== proposal.id || activeDocument?.id !== document.id || activeDocument.content !== document.content) {
@@ -484,7 +492,7 @@ export class AppComponent {
       settings = this.settings();
     }
 
-    if (!settings.model.trim()) {
+    if (settings.provider !== "aiServer" && !settings.model.trim()) {
       this.chatError.set("Choose a model before chatting.");
       this.chatStreaming.set(false);
       return;

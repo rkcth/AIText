@@ -237,12 +237,23 @@
             <input
               ngComboboxInput
               class="model-picker-input"
-              placeholder="Search models by name or id"
+              placeholder="Blank uses the current running model"
               [value]="modelInputValue()"
               (valueChange)="modelQuery.set($event)"
               (focus)="onModelQueryFocus()"
               (blur)="onModelQueryBlur()"
             />
+
+            @if (settings().model) {
+              <button
+                type="button"
+                class="model-picker-toggle"
+                aria-label="Clear model selection"
+                title="Use the current running model"
+                (mousedown)="preventModelOptionDefault($event)"
+                (click)="clearModelSelection()"
+              >×</button>
+            }
 
             <button
               type="button"
