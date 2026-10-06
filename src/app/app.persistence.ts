@@ -9,7 +9,7 @@ import {
   PersistedBootstrapState,
   StoredDocumentRecord,
 } from "./app.types";
-import { LEGACY_STORAGE_KEY } from "./storage.constants";
+import { isAiTextServerOrigin, LEGACY_STORAGE_KEY } from "./storage.constants";
 
 const DATABASE_NAME = "aitext";
 const DATABASE_VERSION = 2;
@@ -29,7 +29,7 @@ const LEGACY_RECORD_KEY = "current";
 
 @Injectable({ providedIn: "root" })
 export class AppPersistenceService {
-  private readonly useServerStorage = ["192.168.2.10", "ai-server"].includes(window.location.hostname);
+  private readonly useServerStorage = isAiTextServerOrigin();
   private dbPromise: Promise<IDBDatabase | null> | null = null;
   private writeQueue = Promise.resolve();
 

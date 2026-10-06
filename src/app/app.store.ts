@@ -25,13 +25,14 @@ import {
 import { AppPersistenceService } from "./app.persistence";
 import { ModelRefreshOwner, runOwnedModelRefresh } from "./model-refresh-owner";
 import { OpenRouterService } from "./openrouter.service";
+import { isAiTextServerOrigin } from "./storage.constants";
 
 type SettingKey = keyof AppSettings;
 
 const USER_HISTORY_DEBOUNCE_MS = 900;
 const SAVE_DEBOUNCE_MS = 500;
 
-const isAiServerHost = (): boolean => ["192.168.2.10", "ai-server"].includes(window.location.hostname);
+const isAiServerHost = isAiTextServerOrigin;
 
 const defaultAiServerUrl = (): string =>
   isAiServerHost() ? "/v1" : "http://192.168.2.10:8002/v1";
