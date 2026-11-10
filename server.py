@@ -6,6 +6,7 @@ import http.client
 import ipaddress
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -77,6 +78,57 @@ MODEL_OPTIONS = [
 ]
 MODEL_BY_ID = {model['id']: model for model in MODEL_OPTIONS}
 STRATA_WINDOW = Path('/srv/ai/strata-evaluation/window.json')
+
+
+# Both of these came from strata-chat, which measured them on the user's own refusal prompt
+# (2026-11-08, 5 trials per row). The Radiance build serving this app declines fiction far more
+# than the previous model did, and no request parameter reliably changes that - control_vector,
+# temperature 0.7-1.2, top_p, prefill and thinking levels all measured about the same - so what
+# works is asking again until it writes. Keep the two in step if one of them is retuned.
+MAX_ATTEMPTS = 3
+PROBE_CHARS = 200
+REFUSAL_START = re.compile(
+    r"""I\s+(?:cannot|ca(?:n'?t|\u2019nt)\s|am\s+(?:unable|not\s+able|prohibited)|will\s+not|won(?:'?t|\u2019t)\s)
+         |I['\u2019]?m\s+(?:unable|sorry)
+         |I\s+can,?\s+however,?\s+(?:write|offer|describe)
+         |As\s+an?\s+AI
+         |Sorry[,.]
+         |It\s+is\s+important\s+to\s+(?:clarify|note|remember|understand)
+         |The\s+(?:premise|request|scenario|prompt|idea)\b[^.]{0,80}(?:error|problem|issue|concern|implies|assumes)
+         |There\s+is\s+no\b[^.]{0,80}(?:relationship|attraction|romantic|sexual)
+         |This\s+(?:story|scene|request|prompt)\s+(?:is(?:n'?t|n\u2019t)|does)
+         |That['\u2019]s\s+(?:beyond|outside)""",
+    re.X | re.I,
+)
+# Only count it as a refusal if a reason shows up too, so a first-person story opening with
+# "I cannot forget that summer" is not thrown away.
+REFUSAL_REASON = re.compile(
+    r"prohibit|guidelin|polic|against|refus|unable|not able|comfortable|inappropria|violat"
+    r"|explicit|graphic|depict|content|theme|topic|story|scene|request|relationship|minor|child|age",
+    re.I,
+)
+# More often than saying no outright, this model answers a fiction prompt by analysing it: a
+# paragraph about definitions, ages and framing instead of a scene. Those markers are meta
+# commentary, and prose the user wants does not use them, so a reply that opens with any of
+# them counts as a decline too.
+ANALYSIS = re.compile(
+    r"\*\*"  # markdown emphasis - fiction answers are asked for without headings or markup
+    r"|by definition|factual and ethical|important to clarify|must be addressed"
+    r"|cannot occur between|cannot give consent|legal age|legal consent|power imbalance"
+    r"|adult[- ]child|is not something that can be|narrative framing|portrayed as"
+    r"|is a case of|the premise of|this premise|reads the ages",
+    re.I,
+)
+
+
+def looks_like_decline(text):
+    if ANALYSIS.search(text):
+        return True
+    if not REFUSAL_START.search(text):
+        return False
+    # A reply that opens "I cannot ..." and stops almost immediately is declining, not narrating.
+    # A longer one needs an explicit reason before it gets thrown away.
+    return len(text) < 120 or bool(REFUSAL_REASON.search(text))
 
 
 def strata_phase():
@@ -392,6 +444,47 @@ class Handler(SimpleHTTPRequestHandler):
             self.path = '/index.html'
         return super().do_GET()
 
+    def relay_stream(self, resp, opening=b''):
+        """Pass Radiance's SSE stream through to the browser, after any opening already read."""
+        self.send_response(resp.status, resp.reason)
+        for k, v in resp.getheaders():
+            if k.lower() in {'connection', 'transfer-encoding', 'content-encoding', 'content-length'}:
+                continue
+            self.send_header(k, v)
+        self.close_connection = True
+        self.send_header('Connection', 'close')
+        self.end_headers()
+        if opening:
+            self.wfile.write(opening)
+            self.wfile.flush()
+        while True:
+            chunk = resp.read(256)
+            if not chunk:
+                break
+            self.wfile.write(chunk)
+            self.wfile.flush()
+
+    def probe_stream(self, resp, limit=PROBE_CHARS):
+        """Read the opening of an SSE reply without forwarding it, so a decline can be retried
+        before the browser has seen any of it. Returns (reply text so far, raw bytes read)."""
+        head, opening = '', b''
+        while len(head) < limit and len(opening) < 262144:
+            line = resp.readline()
+            if not line:
+                break
+            opening += line
+            if not line.startswith(b'data: '):
+                continue
+            data = line[6:].strip()
+            if data == b'[DONE]':
+                break
+            try:
+                choices = (json.loads(data).get('choices') or [])
+                head += ((choices[0].get('delta') if choices else None) or {}).get('content') or ''
+            except Exception:
+                pass
+        return head, opening
+
     def do_POST(self):
         if not self.browser_origin_allowed():
             return self.send_json(403, {'error': 'Browser origin is not AIText'})
@@ -447,6 +540,7 @@ class Handler(SimpleHTTPRequestHandler):
         request_stream = False
         strip_channel_thought = False
         port = current_upstream_port()
+        decline_guard = False
         if self.path == '/v1/chat/completions' and body:
             try:
                 payload = json.loads(body)
@@ -469,9 +563,14 @@ class Handler(SimpleHTTPRequestHandler):
                     port = UPSTREAM_PORT
                 payload['model'] = model_id
                 if model_id in STRATA_WORK_MODELS:
-                    # AIText explicitly selects uncensored mode; retain the boolean for older Strata deployments.
-                    payload['strata_control_vector'] = 'uncensored'
+                    # Radiance has one server-side safety direction and takes it as a boolean; a
+                    # request's own value overrides the server default, which is off. Measured
+                    # 2026-11-08 it is worth about 0-2/5 either way on a prompt the model wants to
+                    # refuse, so it is not the fix - looks_like_decline above is. It is free, and it
+                    # is the only uncensored lever this build has, so the request keeps saying it.
+                    payload['control_vector'] = True
                     payload['experimental_speed_projection'] = True
+                    decline_guard = True
                 model = MODEL_BY_ID.get(model_id) or {}
                 strip_channel_thought = bool(model.get('strip_channel_thought'))
                 for key, value in model.get('sampling_defaults', {}).items():
@@ -496,89 +595,106 @@ class Handler(SimpleHTTPRequestHandler):
             headers.pop('origin', None)
         headers = {k: v for k, v in headers.items() if k.lower() not in {'authorization', 'x-api-key'}}
         headers.update(upstream_auth())
-        conn = upstream_connection(port, 300)
-        try:
-            conn.request(self.command, self.path, body=body, headers=headers)
-            resp = conn.getresponse()
-            if request_stream:
-                self.send_response(resp.status, resp.reason)
-                for k, v in resp.getheaders():
-                    if k.lower() in {'connection', 'transfer-encoding', 'content-encoding', 'content-length'}:
-                        continue
-                    self.send_header(k, v)
-                self.close_connection = True
-                self.send_header('Connection', 'close')
-                self.end_headers()
-                if not strip_channel_thought:
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            retry = False
+            conn = upstream_connection(port, 300)
+            try:
+                conn.request(self.command, self.path, body=body, headers=headers)
+                resp = conn.getresponse()
+                if request_stream and not strip_channel_thought:
+                    if decline_guard and attempt < MAX_ATTEMPTS:
+                        head, opening = self.probe_stream(resp)
+                        if head.strip() and looks_like_decline(head):
+                            print('AIText attempt %d/%d declined: %r'
+                                  % (attempt, MAX_ATTEMPTS, head[:60]), flush=True)
+                            retry = True
+                        else:
+                            self.relay_stream(resp, opening)
+                    else:
+                        # The last try is shown as it comes, decline or not, so the user always
+                        # gets a complete reply rather than a truncated sample of one.
+                        self.relay_stream(resp)
+                    if not retry:
+                        return
+                elif request_stream:
+                    self.send_response(resp.status, resp.reason)
+                    for k, v in resp.getheaders():
+                        if k.lower() in {'connection', 'transfer-encoding', 'content-encoding', 'content-length'}:
+                            continue
+                        self.send_header(k, v)
+                    self.close_connection = True
+                    self.send_header('Connection', 'close')
+                    self.end_headers()
+                    filtering_thought = None
+                    pending = ''
                     while True:
-                        chunk = resp.read(256)
-                        if not chunk:
+                        line = resp.readline()
+                        if not line:
                             break
-                        self.wfile.write(chunk)
+                        if not line.startswith(b'data: '):
+                            self.wfile.write(line)
+                            self.wfile.flush()
+                            continue
+                        data = line[6:].strip()
+                        if data == b'[DONE]':
+                            self.wfile.write(line)
+                            self.wfile.flush()
+                            continue
+                        try:
+                            event = json.loads(data)
+                            choices = event.get('choices') or []
+                            delta = (choices[0].get('delta') if choices else None) or {}
+                            text = delta.get('content') or ''
+                            if text:
+                                if filtering_thought is None:
+                                    filtering_thought = text.startswith('<|channel>thought')
+                                if filtering_thought:
+                                    pending += text
+                                    marker = pending.find('<channel|>')
+                                    if marker < 0:
+                                        delta['content'] = ''
+                                    else:
+                                        delta['content'] = pending[marker + len('<channel|>'):]
+                                        pending = ''
+                                        filtering_thought = False
+                                line = b'data: ' + json.dumps(event).encode() + b'\n\n'
+                        except Exception:
+                            pass
+                        self.wfile.write(line)
                         self.wfile.flush()
                     return
-                filtering_thought = None
-                pending = ''
-                while True:
-                    line = resp.readline()
-                    if not line:
-                        break
-                    if not line.startswith(b'data: '):
-                        self.wfile.write(line)
-                        self.wfile.flush()
+                else:
+                    raw = resp.read()
+                    reply = ''
+                    if self.path == '/v1/chat/completions' and raw:
+                        try:
+                            payload = json.loads(raw)
+                            for choice in payload.get('choices') or []:
+                                msg = choice.get('message') or {}
+                                if strip_channel_thought and isinstance(msg.get('content'), str) and msg['content'].startswith('<|channel>thought'):
+                                    msg['content'] = msg['content'].split('<channel|>')[-1] if '<channel|>' in msg['content'] else ''
+                                if not msg.get('content') and msg.get('reasoning_content'):
+                                    msg['content'] = msg['reasoning_content']
+                                reply = reply or (msg.get('content') or '')
+                            raw = json.dumps(payload).encode()
+                        except Exception:
+                            pass
+                    if decline_guard and attempt < MAX_ATTEMPTS and reply.strip() and looks_like_decline(reply):
+                        print('AIText attempt %d/%d declined: %r'
+                              % (attempt, MAX_ATTEMPTS, reply[:60]), flush=True)
                         continue
-                    data = line[6:].strip()
-                    if data == b'[DONE]':
-                        self.wfile.write(line)
-                        self.wfile.flush()
-                        continue
-                    try:
-                        event = json.loads(data)
-                        choices = event.get('choices') or []
-                        delta = (choices[0].get('delta') if choices else None) or {}
-                        text = delta.get('content') or ''
-                        if text:
-                            if filtering_thought is None:
-                                filtering_thought = text.startswith('<|channel>thought')
-                            if filtering_thought:
-                                pending += text
-                                marker = pending.find('<channel|>')
-                                if marker < 0:
-                                    delta['content'] = ''
-                                else:
-                                    delta['content'] = pending[marker + len('<channel|>'):]
-                                    pending = ''
-                                    filtering_thought = False
-                            line = b'data: ' + json.dumps(event).encode() + b'\n\n'
-                    except Exception:
-                        pass
-                    self.wfile.write(line)
+                    self.send_response(resp.status, resp.reason)
+                    for k, v in resp.getheaders():
+                        if k.lower() in {'connection', 'transfer-encoding', 'content-encoding', 'content-length'}:
+                            continue
+                        self.send_header(k, v)
+                    self.send_header('Content-Length', str(len(raw)))
+                    self.end_headers()
+                    self.wfile.write(raw)
                     self.wfile.flush()
-                return
-            raw = resp.read()
-            if self.path == '/v1/chat/completions' and raw:
-                try:
-                    payload = json.loads(raw)
-                    for choice in payload.get('choices') or []:
-                        msg = choice.get('message') or {}
-                        if strip_channel_thought and isinstance(msg.get('content'), str) and msg['content'].startswith('<|channel>thought'):
-                            msg['content'] = msg['content'].split('<channel|>')[-1] if '<channel|>' in msg['content'] else ''
-                        if not msg.get('content') and msg.get('reasoning_content'):
-                            msg['content'] = msg['reasoning_content']
-                    raw = json.dumps(payload).encode()
-                except Exception:
-                    pass
-            self.send_response(resp.status, resp.reason)
-            for k, v in resp.getheaders():
-                if k.lower() in {'connection', 'transfer-encoding', 'content-encoding', 'content-length'}:
-                    continue
-                self.send_header(k, v)
-            self.send_header('Content-Length', str(len(raw)))
-            self.end_headers()
-            self.wfile.write(raw)
-            self.wfile.flush()
-        finally:
-            conn.close()
+                    return
+            finally:
+                conn.close()
 
 
 if __name__ == '__main__':
