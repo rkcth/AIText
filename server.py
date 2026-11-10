@@ -468,7 +468,7 @@ class Handler(SimpleHTTPRequestHandler):
         """Read the opening of an SSE reply without forwarding it, so a decline can be retried
         before the browser has seen any of it. Returns (reply text so far, raw bytes read)."""
         head, opening = '', b''
-        while len(head) < limit and len(opening) < 262144:
+        while len(head) < limit and len(opening) < 262144:  # the byte cap is a memory backstop
             line = resp.readline()
             if not line:
                 break
@@ -570,7 +570,12 @@ class Handler(SimpleHTTPRequestHandler):
                     # is the only uncensored lever this build has, so the request keeps saying it.
                     payload['control_vector'] = True
                     payload['experimental_speed_projection'] = True
-                    decline_guard = True
+                    # Judging the opening only works when there is one, so the guard is off while
+                    # the request thinks: reasoning deltas arrive before any reply text, and there
+                    # is no way to un-send them to ask again. With thinking on this is the old
+                    # behaviour, byte for byte. AIText has a saved disable-thinking setting for this.
+                    thinking = payload.get('chat_template_kwargs')
+                    decline_guard = isinstance(thinking, dict) and thinking.get('enable_thinking') is False
                 model = MODEL_BY_ID.get(model_id) or {}
                 strip_channel_thought = bool(model.get('strip_channel_thought'))
                 for key, value in model.get('sampling_defaults', {}).items():
